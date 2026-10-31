@@ -53,8 +53,9 @@ export class HeaderComponent extends BaseComponent<HTMLDivElement> {
     public override generateHTML(): string {
         return `
             <div class="col-container announcement">
-                This is the legacy version of ObjToSchematic. <br>
-                It will not receive any more updates, bug fixes, or community support. Pull requests will be considered for merging.
+                This is a modified fork of ObjToSchematic, made for my own standalone app. <br>
+                I update it whenever I like and add whatever features I need. It's a personal project, so I don't accept requests or bug reports. <br>
+                It's built for GLB input and .schem output only, other formats may be broken and I won't fix them.
             </div>
             <div class="col-container header-cols">
                 <div class="col-container">

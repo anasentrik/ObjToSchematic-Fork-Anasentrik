@@ -117,6 +117,7 @@ export class BVHRayVoxeliser extends IVoxeliser {
         }
         ProgressManager.Get.end(taskHandle);
 
+        this._preserveDetail(mesh, voxelMesh, voxeliseParams);
         mesh.clearTransform();
 
         return voxelMesh;

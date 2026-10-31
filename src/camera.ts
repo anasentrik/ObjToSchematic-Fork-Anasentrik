@@ -259,6 +259,9 @@ export class ArcballCamera {
     }
 
     public onMouseDown(e: MouseEvent) {
+        if (Renderer.Get.tryBeginResize(e)) {
+            return;
+        }
         if (e.buttons === 1) {
             this.isUserRotating = true;
         } else if (e.buttons === 2) {
@@ -311,6 +314,16 @@ export class ArcballCamera {
 
     public getInverseWorldViewProjection() {
         return m4.inverse(this.getWorldViewProjection());
+    }
+
+    /**
+     * Moves the camera back if it is closer than `distance`, never closer.
+     */
+    public ensureDistance(distance: number) {
+        if (this._distance.getTarget() < distance) {
+            this._distance.setTarget(distance);
+            Renderer.Get.forceRedraw();
+        }
     }
 
     public onZoomOut() {

@@ -22,3 +22,14 @@ dependencygraph.svg
 .firebase
 /webpack/
 .firebaserc
+
+# Local tooling and anything personal, never commit these
+/.claude/
+/.vscode/
+.env
+.env.*
+*.pem
+*.key
+*.tsbuildinfo
+__pycache__/
+*.log

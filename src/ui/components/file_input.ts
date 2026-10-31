@@ -7,6 +7,7 @@ import { AppIcons } from '../icons';
 import { LOC } from '../../localiser';
 
 export class FileComponent extends ConfigComponent<File, HTMLDivElement> {
+    private static _dropRegistered = false;
     private _loadedFilePath: string | null;
 
     public constructor() {
@@ -51,6 +52,19 @@ export class FileComponent extends ConfigComponent<File, HTMLDivElement> {
                 inputElement.click();
             }
         });
+
+        if (!FileComponent._dropRegistered) {
+            FileComponent._dropRegistered = true;
+            window.addEventListener('dragover', (e) => e.preventDefault());
+            window.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const file = e.dataTransfer?.files?.item(0);
+                if (this.enabled && file && /\.(obj|glb)$/i.test(file.name)) {
+                    this._loadedFilePath = file.name;
+                    this._setValue(file);
+                }
+            });
+        }
     }
 
     protected _onValueChanged(): void {

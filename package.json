@@ -19,14 +19,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LucasDower/ObjToSchematic.git"
+    "url": "git+https://github.com/anasentrik/ObjToSchematic-Fork-Anasentrik.git"
   },
   "author": "Lucas Dower",
+  "contributors": ["Anasentrik"],
   "license": "BSD-3-Clause",
   "bugs": {
-    "url": "https://github.com/LucasDower/ObjToSchematic/issues"
+    "url": "https://github.com/anasentrik/ObjToSchematic-Fork-Anasentrik/issues"
   },
-  "homepage": "https://github.com/LucasDower/ObjToSchematic#readme",
+  "homepage": "https://github.com/anasentrik/ObjToSchematic-Fork-Anasentrik#readme",
   "devDependencies": {
     "@types/adm-zip": "^0.5.0",
     "@types/jest": "^27.4.1",

@@ -1,3 +1,8 @@
+> [!NOTE]
+> **This is a modified fork of ObjToSchematic 1.0 by [Anasentrik](https://github.com/Anasentrik)**, made for my own standalone app.
+> It adds Minecraft 26.3 blocks, Oklab colours, a wizard-style menu, a block palette dialog, stairs and slabs, and more.
+> I update it whenever I like and add whatever features I need. It's a personal project, so I don't accept requests or bug reports. It is built for GLB input and `.schem` output only, other formats may be broken and I won't fix them. See [CHANGES.md](CHANGES.md) for everything that changed. Original work by [Lucas Dower](https://github.com/LucasDower/ObjToSchematic).
+
 > [!IMPORTANT]  
 > **ObjToSchematic 2.0 is out now at [objtoschematic.com](objtoschematic.com)!**
 > 

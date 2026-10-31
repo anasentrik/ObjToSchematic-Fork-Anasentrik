@@ -6,6 +6,7 @@ import { THeadlessConfig } from './headless';
 export const headlessConfig: THeadlessConfig = {
     import: {
         file: new File([], '/Users/lucasdower/ObjToSchematic/res/samples/skull.obj'),
+        upAxis: 'y',
         rotation: new Vector3(0, 0, 0),
     },
     voxelise: {
@@ -13,8 +14,11 @@ export const headlessConfig: THeadlessConfig = {
         voxeliser: 'bvh-ray',
         size: 80,
         useMultisampleColouring: false,
+        preserveDetail: false,
         voxelOverlapRule: 'average',
         enableAmbientOcclusion: false, // Only want true if exporting to .obj
+        normalBias: 0.0,
+        useStairs: false,
     },
     assign: {
         textureAtlas: 'vanilla', // Must be an atlas name that exists in /resources/atlases
@@ -28,6 +32,8 @@ export const headlessConfig: THeadlessConfig = {
         lightThreshold: 0,
         contextualAveraging: true,
         errorWeight: 0.0,
+        minBlockCount: 0,
+        maxUniqueBlocks: 0,
     },
     export: {
         exporter: 'litematic', // 'schematic' / 'litematic',

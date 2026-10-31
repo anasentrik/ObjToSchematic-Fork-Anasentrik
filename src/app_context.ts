@@ -1,4 +1,5 @@
 import '../styles.css';
+import { BlockFilters } from './block_filters';
 import { AppAnalytics } from './analytics';
 
 import { FallableBehaviour } from './block_mesh';
@@ -11,7 +12,7 @@ import { MouseManager } from './mouse';
 import { MeshType, Renderer } from './renderer';
 import { AppConsole, TMessage } from './ui/console';
 import { UI } from './ui/layout';
-import { ColourSpace, EAction } from './util';
+import { EAction } from './util';
 import { ASSERT } from './util/error_util';
 import { download, downloadAsZip } from './util/file_util';
 import { LOG_ERROR, Logger } from './util/log_util';
@@ -61,6 +62,31 @@ export class AppContext {
         UI.Get.disableAll();
 
         ArcballCamera.Get.init();
+        // The "skip" toggles move whole groups of blocks in and out of the palette
+        {
+            const assign = UI.Get._ui.assign.components;
+            const groups: [typeof assign.excludeFalling, (block: string) => boolean][] = [
+                [assign.excludeFalling, BlockFilters.isFalling],
+                [assign.excludeGlass, BlockFilters.isGlass],
+                [assign.excludeLiquids, BlockFilters.isLiquid],
+            ];
+            groups.forEach(([toggle, isInGroup]) => {
+                const apply = () => assign.blockPalette.setBlocksIncluded(isInGroup, !toggle.getValue());
+                toggle.addValueChangedListener(apply);
+                apply();
+            });
+        }
+
+        Renderer.Get.resizeHooks = {
+            canResize: () => !this.Get._workerController.isBusy(),
+            getSize: () => UI.Get._ui.voxelise.components.size.getValue(),
+            setSize: (size) => UI.Get._ui.voxelise.components.size.setValue(size),
+            commit: (size) => {
+                UI.Get._ui.voxelise.components.size.setValue(size);
+                const hasBlocks = Renderer.Get.getModelsAvailable() >= 3;
+                this.Get.doAll(hasBlocks ? [EAction.Voxelise, EAction.Assign] : [EAction.Voxelise]);
+            },
+        };
         MouseManager.Get.init();
 
         window.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -97,6 +123,7 @@ export class AppContext {
                 action: 'Import',
                 params: {
                     file: file,
+                    upAxis: components.upAxis.getValue(),
                     rotation: components.rotation.getValue(),
                 },
             });
@@ -125,6 +152,7 @@ export class AppContext {
             UI.Get.updateMaterialsAction(this._materialManager);
 
             this._loadedFilename = file.name.split('.')[0] ?? 'result';
+            UI.Get._ui.export.components.fileName.setValue(this._loadedFilename);
         }
 
         AppConsole.info(LOC('import.rendering_mesh'));
@@ -195,12 +223,15 @@ export class AppContext {
             const resultVoxelise = await this._workerController.execute({
                 action: 'Voxelise',
                 params: {
+                    useStairs: components.useStairs.getValue(),
                     constraintAxis: components.constraintAxis.getValue(),
                     voxeliser: components.voxeliser.getValue(),
                     size: components.size.getValue(),
                     useMultisampleColouring: components.multisampleColouring.getValue(),
+                    preserveDetail: components.preserveDetail.getValue(),
                     enableAmbientOcclusion: components.ambientOcclusion.getValue(),
                     voxelOverlapRule: components.voxelOverlapRule.getValue(),
+                    normalBias: components.normalBias.getValue(),
                 },
             });
 
@@ -266,13 +297,15 @@ export class AppContext {
                     blockPalette: components.blockPalette.getValue().getBlocks(),
                     dithering: components.dithering.getValue(),
                     ditheringMagnitude: components.ditheringMagnitude.getValue(),
-                    colourSpace: ColourSpace.RGB,
+                    colourSpace: components.colourSpace.getValue(),
                     fallable: components.fallable.getValue() as FallableBehaviour,
                     resolution: Math.pow(2, components.colourAccuracy.getValue()),
                     calculateLighting: components.calculateLighting.getValue(),
                     lightThreshold: components.lightThreshold.getValue(),
                     contextualAveraging: components.contextualAveraging.getValue(),
                     errorWeight: components.errorWeight.getValue() / 10,
+                    minBlockCount: components.minBlockCount.getValue(),
+                    maxUniqueBlocks: components.maxUniqueBlocks.getValue(),
                 },
             });
 
@@ -283,6 +316,7 @@ export class AppContext {
             ASSERT(resultAssign.action === 'Assign');
 
             this._addWorkerMessagesToConsole(resultAssign.messages);
+            UI.Get.setBlockBreakdown(resultAssign.result.blockCounts, (blockName) => this._removeBlockFromPalette(blockName));
         }
         AppConsole.success(LOC('assign.loaded_block_mesh'));
 
@@ -351,15 +385,16 @@ export class AppContext {
 
             ASSERT(this._loadedFilename !== null)
             const fileExport = resultExport.result.files;
+            const exportName = UI.Get._ui.export.components.fileName.getValue().trim().replace(/[\\/:*?"<>|]/g, '_') || this._loadedFilename;
             if (fileExport.type === 'single') {
-                download(fileExport.content, `${this._loadedFilename}_OTS${fileExport.extension}`);
+                download(fileExport.content, `${exportName}${fileExport.extension}`);
             } else {
                 const zipFiles = fileExport.regions.map((region) => {
                     // .nbt exports need to be lowercase
                     return { content: region.content, filename: `ots_${region.name}${fileExport.extension}` }
                 });
 
-                downloadAsZip(`${this._loadedFilename}_OTS.zip`, zipFiles);
+                downloadAsZip(`${exportName}.zip`, zipFiles);
             }
         }
         AppConsole.success(LOC('export.exported_structure'));
@@ -399,9 +434,58 @@ export class AppContext {
             } else {
                 UI.Get.enableTo(action + 1);
             }
+            this._advanceSections(action);
         } else {
             UI.Get.enableTo(action);
         }
+    }
+
+    /**
+     * Runs several actions back to back, stopping at the first one that fails.
+     */
+    public async doAll(actions: EAction[]) {
+        UI.Get.disableAll();
+
+        for (const action of actions) {
+            this._lastAction = action;
+            if (!await this._executeAction(action)) {
+                UI.Get.enableTo(action);
+                return;
+            }
+            this._advanceSections(action);
+        }
+
+        UI.Get.enableTo(actions[actions.length - 1] + 1);
+    }
+
+    /**
+     * Keeps the sidebar focused on the step the user is up to, so only the
+     * relevant settings are expanded instead of every section at once.
+     */
+    private _advanceSections(completed: EAction) {
+        switch (completed) {
+            case EAction.Import:
+                UI.Get.setSectionOpen('import', false);
+                UI.Get.setSectionOpen('voxelise', true);
+                break;
+            case EAction.Voxelise:
+                UI.Get.setSectionOpen('voxelise', false);
+                UI.Get.setSectionOpen('assign', true);
+                break;
+            case EAction.Assign:
+                UI.Get.setSectionOpen('export', true);
+                break;
+        }
+    }
+
+    private _removeBlockFromPalette(blockName: string) {
+        const palette = UI.Get.layout.assign.components.blockPalette;
+        // The assigner needs at least one block to choose from
+        if (this._workerController.isBusy() || palette.getValue().count() <= 1) {
+            return;
+        }
+        palette.deselectBlock(blockName);
+        this.do(EAction.Assign);
     }
 
     private _addWorkerMessagesToConsole(messages: TMessage[]) {

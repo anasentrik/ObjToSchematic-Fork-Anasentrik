@@ -28,7 +28,7 @@ export namespace AppConstants {
         export const OCCLUSION = ComponentSize.OCCLUSION * COMPONENT_PER_SIZE_OFFSET;
     }
 
-    export const DATA_VERSION = 3105; // 1.19
+    export const DATA_VERSION = 5023; // 26.3 (world_version from the client jar's version.json)
 }
 
 export class AppRuntimeConstants {

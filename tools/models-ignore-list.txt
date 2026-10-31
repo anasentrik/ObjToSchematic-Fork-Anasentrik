@@ -30,3 +30,8 @@ jungle_leaves.json
 mangrove_leaves.json
 oak_leaves.json
 spruce_leaves.json
+test_block_accept.json
+test_block_fail.json
+test_block_log.json
+test_block_start.json
+test_instance_block.json

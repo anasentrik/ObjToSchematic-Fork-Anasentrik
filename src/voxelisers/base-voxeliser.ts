@@ -25,6 +25,33 @@ export abstract class IVoxeliser {
     protected abstract _voxelise(mesh: Mesh, voxeliseParams: VoxeliseParams.Input): VoxelMesh;
 
     /**
+     * The rays can pass between the voxels of very small or thin triangles and miss them completely.
+     * Call this while the mesh transform is still set: every triangle whose centre has no voxel gets one.
+     */
+    protected _preserveDetail(mesh: Mesh, voxelMesh: VoxelMesh, voxeliseParams: VoxeliseParams.Input) {
+        if (!voxeliseParams.preserveDetail) {
+            return;
+        }
+
+        for (let triIndex = 0; triIndex < mesh.getTriangleCount(); ++triIndex) {
+            const triangle = mesh.getUVTriangle(triIndex);
+            const centre = Vector3.add(triangle.v0, triangle.v1).add(triangle.v2).divScalar(3);
+            if (voxelMesh.isVoxelAt(centre.copy().round())) {
+                continue;
+            }
+
+            const colour = this._getVoxelColour(
+                mesh,
+                triangle,
+                mesh.getMaterialByTriangle(triIndex),
+                centre,
+                voxeliseParams.useMultisampleColouring,
+            );
+            voxelMesh.addVoxel(centre, colour);
+        }
+    }
+
+    /**
      * `Location` should be in block-space.
      */
     protected _getVoxelColour(mesh: Mesh, triangle: UVTriangle, materialName: string, location: Vector3, multisample: boolean): RGBA {

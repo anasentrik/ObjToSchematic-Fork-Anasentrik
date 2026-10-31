@@ -63,6 +63,7 @@ export class NormalCorrectedRayVoxeliser extends IVoxeliser {
         }
         ProgressManager.Get.end(taskHandle);
 
+        this._preserveDetail(mesh, this._voxelMesh!, voxeliseParams);
         mesh.clearTransform();
 
         return this._voxelMesh;
@@ -82,7 +83,7 @@ export class NormalCorrectedRayVoxeliser extends IVoxeliser {
             if (intersection) {
                 // Move transition away from normal
                 const norm = normals.v0.normalise();
-                intersection.sub(Vector3.mulScalar(norm, 0.5));
+                intersection.sub(Vector3.mulScalar(norm, 0.5 - (this._voxeliseParams.normalBias ?? 0.0)));
                 // Correct size parity
                 intersection.add(this._offset);
 

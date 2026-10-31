@@ -34,6 +34,7 @@ export namespace SettingsParams {
 export namespace ImportParams {
     export type Input = {
         file: File,
+        upAxis: 'y' | 'z' | '-z',
         rotation: Vector3,
     }
 
@@ -68,12 +69,15 @@ export namespace SetMaterialsParams {
 
 export namespace VoxeliseParams {
     export type Input = {
+        useStairs: boolean,
         constraintAxis: TAxis,
         voxeliser: TVoxelisers,
         size: number,
         useMultisampleColouring: boolean,
+        preserveDetail: boolean,
         enableAmbientOcclusion: boolean,
         voxelOverlapRule: TVoxelOverlapRule,
+        normalBias: number,
     }
 
     export type Output = {
@@ -105,6 +109,8 @@ export namespace RenderNextVoxelMeshChunkParams {
     export type Output = {
         buffer: TVoxelMeshBufferDescription,
         dimensions: Vector3,
+        boundsMin: Vector3,
+        boundsMax: Vector3,
         voxelSize: number,
         moreVoxelsToBuffer: boolean,
         isFirstChunk: boolean,
@@ -127,10 +133,14 @@ export namespace AssignParams {
         lightThreshold: number,
         contextualAveraging: boolean,
         errorWeight: number,
+        /** Blocks used fewer times than this are replaced. 0 disables. */
+        minBlockCount: number,
+        /** Cap on distinct block types. 0 disables. */
+        maxUniqueBlocks: number,
     }
 
     export type Output = {
-
+        blockCounts: { name: string, count: number }[],
     }
 }
 

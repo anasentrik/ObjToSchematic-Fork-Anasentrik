@@ -2,22 +2,19 @@ import { PALETTE_ALL_RELEASE } from '../../../res/palettes/all';
 import { LOC } from '../../localiser';
 import { Palette } from '../../palette';
 import { AppUtil } from '../../util';
-import { ASSERT } from '../../util/error_util';
 import { download } from '../../util/file_util';
 import { UIUtil } from '../../util/ui_util';
 import { AppConsole } from '../console';
-import { AppIcons } from '../icons';
-import { CheckboxComponent } from './checkbox';
 import { ConfigComponent } from './config';
-import { ToolbarItemComponent } from './toolbar_item';
 
+type TSide = 'inc' | 'exc';
+
+/**
+ * The block palette. The sidebar only shows a summary and an Edit button, the blocks
+ * themselves are edited in a dialog with an "included" and an "excluded" list.
+ */
 export class PaletteComponent extends ConfigComponent<Palette, HTMLDivElement> {
-    private _checkboxes: { block: string, element: CheckboxComponent }[];
     private _palette: Palette;
-    private _selectAll: ToolbarItemComponent;
-    private _deselectAll: ToolbarItemComponent;
-    private _importFrom: ToolbarItemComponent;
-    private _exportTo: ToolbarItemComponent;
 
     public constructor() {
         super();
@@ -25,146 +22,48 @@ export class PaletteComponent extends ConfigComponent<Palette, HTMLDivElement> {
         this._palette = Palette.create();
         this._palette.add(PALETTE_ALL_RELEASE);
         this._setValue(this._palette);
-
-        this._checkboxes = [];
-        PALETTE_ALL_RELEASE.forEach((block) => {
-            this._checkboxes.push({
-                block: block,
-                element: new CheckboxComponent()
-                    .setDefaultValue(true)
-                    .setUnlocalisedCheckedText(block)
-                    .setUnlocalisedUncheckedText(block),
-            });
-        });
-
-        this._selectAll = new ToolbarItemComponent({ iconSVG: AppIcons.SELECT_ALL, id: 'select-all' })
-            .onClick(() => {
-                this._checkboxes.forEach((checkbox) => {
-                    checkbox.element.check();
-                });
-                this._onCountSelectedChanged();
-            });
-
-
-        this._deselectAll = new ToolbarItemComponent({ iconSVG: AppIcons.DESELECT_ALL, id: 'deselect-all' })
-            .onClick(() => {
-                this._checkboxes.forEach((checkbox) => {
-                    checkbox.element.uncheck();
-                });
-                this._onCountSelectedChanged();
-            });
-
-        this._importFrom = new ToolbarItemComponent({ iconSVG: AppIcons.IMPORT, id: 'import' })
-            .onClick(() => {
-                const a = document.createElement('input');
-                a.setAttribute('type', 'file');
-                a.setAttribute('accept', '.txt');
-
-                a.addEventListener('change', () => {
-                    const files = a.files;
-                    if (files?.length === 1) {
-                        const file = files.item(0);
-                        ASSERT(file !== null);
-                        AppConsole.info(LOC('assign.reading_palette', { file_name: file.name }));
-                        file.text().then((text) => {
-                            this._onReadPaletteFile(text);
-                        });
-                    }
-                });
-
-                a.click();
-            });
-
-        this._exportTo = new ToolbarItemComponent({ iconSVG: AppIcons.EXPORT, id: 'export' })
-            .onClick(() => {
-                const textPalette = this._checkboxes.filter((x) => x.element.getValue())
-                    .map((x) => x.block)
-                    .join('\n');
-                download(textPalette, 'block-palette.txt');
-            });
     }
 
-    private _onCountSelectedChanged() {
-        const countSelected = this.getValue().count();
-
-        this._deselectAll.setEnabled(this.enabled && countSelected > 0);
-        this._selectAll.setEnabled(this.enabled && countSelected < PALETTE_ALL_RELEASE.length);
+    /**
+     * Removes a block from the palette, used by the block breakdown list.
+     */
+    public deselectBlock(blockName: string) {
+        if (this._palette.remove(blockName)) {
+            this._updateSummary();
+        }
     }
 
-    private _onReadPaletteFile(text: string) {
-        const blockNames = text.split('\n');
-
-        let countDeselected = 0;
-        this._checkboxes.forEach((checkbox) => {
-            if (checkbox.element.getValue()) {
-                checkbox.element.uncheck();
-                ++countDeselected;
-            }
-        });
-        AppConsole.info(LOC('assign.deselected_blocks', { count: countDeselected }));
-
-        let countFound = 0;
-        let countChecked = 0;
-        blockNames.forEach((blockName) => {
-            blockName = blockName.trim();
-            if (blockName.length === 0) {
-                return;
-            }
-            ++countFound;
-
-            if (!AppUtil.Text.isNamespacedBlock(blockName)) {
-                AppConsole.error(LOC('assign.block_not_namespaced', { block_name: blockName }));
+    /**
+     * Includes or excludes every block matching a rule, used by the "skip" toggles.
+     */
+    public setBlocksIncluded(isInGroup: (blockName: string) => boolean, included: boolean) {
+        PALETTE_ALL_RELEASE.filter(isInGroup).forEach((block) => {
+            if (included) {
+                this._palette.add([block]);
             } else {
-                const checkboxIndex = this._checkboxes.findIndex((x) => x.block === blockName);
-                if (checkboxIndex === -1) {
-                    AppConsole.error(LOC('assign.could_not_use_block', { block_name: blockName }));
-                } else {
-                    this._checkboxes[checkboxIndex].element.check();
-                    ++countChecked;
-                }
+                this._palette.remove(block);
             }
         });
-
-        AppConsole.info(LOC('assign.found_blocks', { count: countFound }));
-        AppConsole.info(LOC('assign.selected_blocks', { count: countChecked }));
-
-        this._onCountSelectedChanged();
+        this._updateSummary();
     }
 
     protected override _generateInnerHTML(): string {
-        let checkboxesHTML = '';
-        this._checkboxes.forEach((checkbox) => {
-            checkboxesHTML += `<div class="col-container" id="${this._getId() + '-block-' + checkbox.block}">`;
-            checkboxesHTML += checkbox.element._generateInnerHTML();
-            checkboxesHTML += '</div>';
-        });
-
         return `
-            <div class="row-container" style="width: 100%; gap: 5px;">
-                <input class="struct-prop" type="text" style="width: 100%; text-align: start;" placeholder="${LOC('assign.components.search')}" id="${this._getId() + '-search'}"></input>
-                <div class="col-container header-cols" style="padding-top: 0px;">
-                    <div class="col-container">
-                        <div class="col-item">
-                            ${this._importFrom.generateHTML()}
-                        </div>
-                        <div class="col-item">
-                            ${this._exportTo.generateHTML()}
-                        </div>
-                    </div>
-                    <div class="col-container">
-                        <div class="col-item">
-                            ${this._selectAll.generateHTML()}
-                        </div>
-                        <div class="col-item">
-                            ${this._deselectAll.generateHTML()}
-                        </div>
-                    </div>
-                </div>
-                <div class="row-container" style="gap: 5px; border-radius: 5px; width: 100%; height: 200px; overflow-y: auto; overflow-x: hidden;" id="${this._getId() + '-list'}">
-                    ${checkboxesHTML}
-                </div>
+            <div class="row-container" style="width: 100%; gap: 6px;">
+                <div class="struct-prop" id="${this._getId()}-summary" style="cursor: default;"></div>
+                <div class="struct-prop" id="${this._getId()}-edit" style="justify-content: center; cursor: pointer;">${LOC('assign.palette.edit')}</div>
             </div>
         `;
+    }
+
+    private _updateSummary() {
+        const summary = document.getElementById(this._getId() + '-summary');
+        if (summary !== null) {
+            summary.innerText = LOC('assign.palette.summary', {
+                included: this._palette.count(),
+                excluded: PALETTE_ALL_RELEASE.length - this._palette.count(),
+            });
+        }
     }
 
     protected override _onValueChanged(): void {
@@ -172,100 +71,244 @@ export class PaletteComponent extends ConfigComponent<Palette, HTMLDivElement> {
 
     protected override _onEnabledChanged(): void {
         super._onEnabledChanged();
-
-        const searchElement = UIUtil.getElementById(this._getId() + '-search') as HTMLInputElement;
-        searchElement.disabled = !this.enabled;
-
-        this._checkboxes.forEach((checkbox) => {
-            checkbox.element.setEnabled(this.getEnabled());
-        });
-
-        this._selectAll.setEnabled(this.enabled);
-        this._deselectAll.setEnabled(this.enabled);
-        this._importFrom.setEnabled(this.enabled);
-        this._exportTo.setEnabled(this.enabled);
-
-        this._onCountSelectedChanged();
         this._updateStyles();
     }
 
     public override registerEvents(): void {
-        const searchElement = UIUtil.getElementById(this._getId() + '-search') as HTMLInputElement;
-        searchElement.addEventListener('keyup', () => {
-            this._onSearchBoxChanged(searchElement.value);
-        });
-        searchElement.addEventListener('mouseenter', () => {
+        const edit = UIUtil.getElementById(this._getId() + '-edit');
+        edit.addEventListener('mouseenter', () => {
             this._setHovered(true);
             this._updateStyles();
         });
-        searchElement.addEventListener('mouseleave', () => {
+        edit.addEventListener('mouseleave', () => {
             this._setHovered(false);
             this._updateStyles();
         });
-
-        this._checkboxes.forEach((checkbox) => {
-            checkbox.element.registerEvents();
-            checkbox.element.addValueChangedListener(() => {
-                const isTicked = checkbox.element.getValue();
-                if (isTicked) {
-                    this._palette.add([checkbox.block]);
-                } else {
-                    this._palette.remove(checkbox.block);
-                }
-                this._onCountSelectedChanged();
-            });
-        });
-
-        this._selectAll.registerEvents();
-        this._deselectAll.registerEvents();
-        this._importFrom.registerEvents();
-        this._exportTo.registerEvents();
-    }
-
-    public override finalise(): void {
-        super.finalise();
-
-        this._checkboxes.forEach((checkbox) => {
-            checkbox.element.finalise();
-        });
-
-        this._selectAll.finalise();
-        this._deselectAll.finalise();
-        this._importFrom.finalise();
-        this._exportTo.finalise();
-
-        this._onCountSelectedChanged();
-
-        this._updateStyles();
-        //this._selectAll.finalise();
-        //this._deselectAll.finalise();
-        //this._importFrom.finalise();
-        //this._exportTo.finalise();
-    }
-
-    private _onSearchBoxChanged(search: string) {
-        this._checkboxes.forEach((checkbox) => {
-            const row = UIUtil.getElementById(this._getId() + '-block-' + checkbox.block);
-            if (checkbox.block.toLocaleLowerCase().includes(search.toLowerCase()) || checkbox.block.toLowerCase().replace(/_/g, ' ').includes(search.toLocaleLowerCase())) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
+        edit.addEventListener('click', () => {
+            if (this.enabled) {
+                this._openDialog();
             }
         });
     }
 
+    public override finalise(): void {
+        super.finalise();
+        this._updateSummary();
+        this._updateStyles();
+    }
+
     protected override _updateStyles(): void {
-        UIUtil.updateStyles(UIUtil.getElementById(this._getId() + '-search'), {
+        UIUtil.updateStyles(UIUtil.getElementById(this._getId() + '-edit'), {
             isActive: false,
             isEnabled: this.enabled,
             isHovered: this.hovered,
+        });
+        UIUtil.updateStyles(UIUtil.getElementById(this._getId() + '-summary'), {
+            isActive: false,
+            isEnabled: this.enabled,
+            isHovered: false,
         });
     }
 
     public override refresh(): void {
         super.refresh();
+        this._updateSummary();
+        const edit = document.getElementById(this._getId() + '-edit');
+        if (edit !== null) {
+            edit.innerText = LOC('assign.palette.edit');
+        }
+    }
 
-        const element = UIUtil.getElementById(this._getId() + '-search') as HTMLInputElement;
-        element.placeholder = LOC('assign.components.search');
+    private _openDialog() {
+        const included = new Set<string>(this._palette.getBlocks());
+        const selected: { [side in TSide]: Set<string> } = { inc: new Set(), exc: new Set() };
+        const search: { [side in TSide]: string } = { inc: '', exc: '' };
+
+        const sectionHTML = (side: TSide) => `
+            <div class="palette-section" data-side="${side}">
+                <div class="palette-heading">${LOC(side === 'inc' ? 'assign.palette.included' : 'assign.palette.excluded')} <span data-count></span></div>
+                <div class="palette-search-row">
+                    <input class="palette-search" type="text" placeholder="${LOC('assign.components.search')}">
+                    <div class="palette-more" data-more>&#8942;</div>
+                    <div class="palette-menu" data-menu hidden>
+                        <div data-act="all">${LOC('assign.palette.select_all')}</div>
+                        <div data-act="none">${LOC('assign.palette.deselect_all')}</div>
+                        <div data-act="import">${LOC('assign.palette.import')}</div>
+                        <div data-act="export">${LOC('assign.palette.export')}</div>
+                    </div>
+                </div>
+                <div class="palette-list" data-list></div>
+            </div>
+        `;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'palette-overlay';
+        overlay.innerHTML = `
+            <div class="palette-dialog">
+                <div class="palette-title">${LOC('assign.palette.title')}</div>
+                ${sectionHTML('inc')}
+                <div class="palette-move">
+                    <div class="palette-btn" data-move="exc"></div>
+                    <div class="palette-btn" data-move="inc"></div>
+                </div>
+                ${sectionHTML('exc')}
+                <div class="palette-footer">
+                    <div class="palette-btn" data-cancel>${LOC('assign.palette.cancel')}</div>
+                    <div class="palette-btn primary" data-apply>${LOC('assign.palette.apply')}</div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                close();
+            }
+        };
+        const close = () => {
+            overlay.remove();
+            document.removeEventListener('keydown', onKey);
+        };
+        document.addEventListener('keydown', onKey);
+
+        const section = (side: TSide) => overlay.querySelector(`.palette-section[data-side="${side}"]`) as HTMLElement;
+        const matches = (block: string, term: string) => {
+            term = term.toLowerCase();
+            return block.includes(term) || block.replace(/_/g, ' ').includes(term);
+        };
+        const onSide = (side: TSide) => PALETTE_ALL_RELEASE.filter((block) => (side === 'inc') === included.has(block));
+        const visible = (side: TSide) => onSide(side).filter((block) => matches(block, search[side]));
+
+        const render = () => {
+            (['inc', 'exc'] as TSide[]).forEach((side) => {
+                // Selection only makes sense for blocks that are still on this side
+                selected[side].forEach((block) => {
+                    if ((side === 'inc') !== included.has(block)) {
+                        selected[side].delete(block);
+                    }
+                });
+                const list = section(side).querySelector('[data-list]') as HTMLElement;
+                list.innerHTML = visible(side).map((block) => {
+                    return `<div class="palette-row${selected[side].has(block) ? ' sel' : ''}" data-block="${block}">${block}</div>`;
+                }).join('');
+                (section(side).querySelector('[data-count]') as HTMLElement).innerText = `(${onSide(side).length})`;
+            });
+            const toExclude = overlay.querySelector('[data-move="exc"]') as HTMLElement;
+            const toInclude = overlay.querySelector('[data-move="inc"]') as HTMLElement;
+            toExclude.innerText = '↓ ' + LOC('assign.palette.exclude_n', { count: selected.inc.size });
+            toInclude.innerText = '↑ ' + LOC('assign.palette.include_n', { count: selected.exc.size });
+            toExclude.classList.toggle('disabled', selected.inc.size === 0);
+            toInclude.classList.toggle('disabled', selected.exc.size === 0);
+        };
+
+        (['inc', 'exc'] as TSide[]).forEach((side) => {
+            const el = section(side);
+            (el.querySelector('.palette-search') as HTMLInputElement).addEventListener('input', (e) => {
+                search[side] = (e.target as HTMLInputElement).value;
+                render();
+            });
+            el.querySelector('[data-list]')!.addEventListener('click', (e) => {
+                const row = (e.target as HTMLElement).closest('.palette-row') as HTMLElement | null;
+                if (row === null) {
+                    return;
+                }
+                const block = row.dataset.block!;
+                if (selected[side].has(block)) {
+                    selected[side].delete(block);
+                } else {
+                    selected[side].add(block);
+                }
+                row.classList.toggle('sel');
+                render();
+            });
+            const menu = el.querySelector('[data-menu]') as HTMLElement;
+            el.querySelector('[data-more]')!.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menu.hidden = !menu.hidden;
+            });
+            menu.addEventListener('click', (e) => {
+                const action = (e.target as HTMLElement).dataset.act;
+                menu.hidden = true;
+                if (action === 'all') {
+                    visible(side).forEach((block) => selected[side].add(block));
+                } else if (action === 'none') {
+                    selected[side].clear();
+                } else if (action === 'export') {
+                    download(onSide('inc').join('\n'), 'block-palette.txt');
+                } else if (action === 'import') {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.txt';
+                    input.addEventListener('change', () => {
+                        const file = input.files?.item(0);
+                        if (file) {
+                            AppConsole.info(LOC('assign.reading_palette', { file_name: file.name }));
+                            file.text().then((text) => {
+                                this._importText(text, included);
+                                render();
+                            });
+                        }
+                    });
+                    input.click();
+                }
+                render();
+            });
+        });
+        overlay.addEventListener('click', (e) => {
+            overlay.querySelectorAll('[data-menu]').forEach((menu) => {
+                (menu as HTMLElement).hidden = true;
+            });
+            if (e.target === overlay) {
+                close();
+            }
+        });
+
+        overlay.querySelectorAll('[data-move]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const toIncluded = (button as HTMLElement).dataset.move === 'inc';
+                const from = toIncluded ? selected.exc : selected.inc;
+                from.forEach((block) => toIncluded ? included.add(block) : included.delete(block));
+                from.clear();
+                render();
+            });
+        });
+
+        overlay.querySelector('[data-cancel]')!.addEventListener('click', close);
+        overlay.querySelector('[data-apply]')!.addEventListener('click', () => {
+            PALETTE_ALL_RELEASE.forEach((block) => {
+                if (included.has(block)) {
+                    this._palette.add([block]);
+                } else {
+                    this._palette.remove(block);
+                }
+            });
+            this._updateSummary();
+            close();
+        });
+
+        render();
+    }
+
+    private _importText(text: string, included: Set<string>) {
+        included.clear();
+        let countFound = 0;
+        let countChecked = 0;
+        text.split('\n').forEach((blockName) => {
+            blockName = blockName.trim();
+            if (blockName.length === 0) {
+                return;
+            }
+            ++countFound;
+            if (!AppUtil.Text.isNamespacedBlock(blockName)) {
+                AppConsole.error(LOC('assign.block_not_namespaced', { block_name: blockName }));
+            } else if (!PALETTE_ALL_RELEASE.includes(blockName)) {
+                AppConsole.error(LOC('assign.could_not_use_block', { block_name: blockName }));
+            } else {
+                included.add(blockName);
+                ++countChecked;
+            }
+        });
+        AppConsole.info(LOC('assign.found_blocks', { count: countFound }));
+        AppConsole.info(LOC('assign.selected_blocks', { count: countChecked }));
     }
 }

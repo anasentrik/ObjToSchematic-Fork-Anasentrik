@@ -78,7 +78,15 @@ export class ChunkedBufferGenerator {
             const voxelPositionArray = voxel.position.toArray();
 
             for (let j = 0; j < AppConstants.VoxelMeshBufferComponentOffsets.POSITION; ++j) {
-                newBuffer.position.data[i * AppConstants.VoxelMeshBufferComponentOffsets.POSITION + j] = cube.custom.position[j] + voxelPositionArray[j % 3];
+                let value = cube.custom.position[j] + voxelPositionArray[j % 3];
+                // Slabs only fill the lower or upper half of their cell
+                if (j % 3 === 1 && voxel.shape?.kind === 'slab') {
+                    const offset = cube.custom.position[j];
+                    if ((voxel.shape.type === 'bottom' && offset > 0) || (voxel.shape.type === 'top' && offset < 0)) {
+                        value = voxelPositionArray[1];
+                    }
+                }
+                newBuffer.position.data[i * AppConstants.VoxelMeshBufferComponentOffsets.POSITION + j] = value;
             }
         }
 

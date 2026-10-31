@@ -1,5 +1,5 @@
 import { Atlas, TAtlasBlock } from './atlas';
-import { AtlasPalette, EFaceVisibility } from './block_assigner';
+import { AtlasPalette, EFaceVisibility, TBlockCollection } from './block_assigner';
 import { BlockInfo } from './block_atlas';
 import { ChunkedBufferGenerator, TBlockMeshBufferDescription } from './buffer';
 import { RGBA_255, RGBAUtil } from './colour';
@@ -13,6 +13,7 @@ import { StatusHandler } from './status';
 import { ColourSpace, TOptional } from './util';
 import { AppError, ASSERT } from './util/error_util';
 import { LOGF } from './util/log_util';
+import { SlabUtil } from './slab';
 import { Vector3 } from './vector';
 import { Voxel, VoxelMesh } from './voxel_mesh';
 import { AssignParams } from './worker_types';
@@ -123,7 +124,7 @@ export class BlockMesh {
             const faceVisibility = blockMeshParams.contextualAveraging ?
                 this._voxelMesh.getFaceVisibility(voxel.position) :
                 VoxelMesh.getFullFaceVisibility();
-            let block = atlasPalette.getBlock(voxelColour, allBlockCollection, faceVisibility, blockMeshParams.errorWeight);
+            let block = atlasPalette.getBlock(voxelColour, allBlockCollection, faceVisibility, blockMeshParams.errorWeight, blockMeshParams.colourSpace);
 
             // Check that this block meets the fallable behaviour, we may need
             // to choose a different block if the current one doesn't meet the requirements
@@ -139,7 +140,7 @@ export class BlockMesh {
                 (blockMeshParams.fallable === 'replace-falling' && isBlockFallable && !isBlockSupported);
 
             if (shouldReplaceBlock) {
-                block = atlasPalette.getBlock(voxelColour, nonFallableBlockCollection, faceVisibility, blockMeshParams.errorWeight);
+                block = atlasPalette.getBlock(voxelColour, nonFallableBlockCollection, faceVisibility, blockMeshParams.errorWeight, blockMeshParams.colourSpace);
             }
 
             if (AppRuntimeConstants.Get.GRASS_LIKE_BLOCKS.has(block.name)) {
@@ -170,7 +171,7 @@ export class BlockMesh {
                 const topBlock = this._blocks.get(topBlockPosition.hash());
                 if (topBlock !== undefined) {
                     if (!AppRuntimeConstants.Get.TRANSPARENT_BLOCKS.has(topBlock.blockInfo.name)) {
-                        const block = atlasPalette.getBlock(examined.voxelColour, nonGrassLikeBlockCollection, examined.faceVisibility, examined.errWeight);
+                        const block = atlasPalette.getBlock(examined.voxelColour, nonGrassLikeBlockCollection, examined.faceVisibility, examined.errWeight, blockMeshParams.colourSpace);
                         examinedBlock.blockInfo = block;
                         this._blocks.set(examined.hash, examinedBlock);
                         this._blocksUsed.add(block.name);
@@ -180,9 +181,112 @@ export class BlockMesh {
         }
         ProgressManager.Get.end(taskHandle);
 
+        this._reduceBlockVariety(blockMeshParams, atlasPalette, allBlockCollection);
+        this._enforceShapeBlocks(blockMeshParams, atlasPalette, allBlockCollection);
+
         if (blockMeshParams.fallable === 'do-nothing' && countFalling > 0) {
             StatusHandler.warning(LOC('assign.falling_blocks', { count: countFalling }));
         }
+    }
+
+    public getBlockCounts(): { name: string, count: number }[] {
+        const counts = new Map<string, number>();
+        this._blocks.forEach((block) => {
+            counts.set(block.blockInfo.name, (counts.get(block.blockInfo.name) ?? 0) + 1);
+        });
+        return Array.from(counts, ([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+    }
+
+    /**
+     * Applies 'Min Block Count' and 'Unique Blocks': rarely used blocks are
+     * dropped and their voxels are re-matched against the remaining blocks.
+     * Done in a single pass, so a kept block can end up below the minimum
+     * after reassignment, that's accepted to keep this predictable and fast.
+     */
+    private _reduceBlockVariety(params: AssignParams.Input, atlasPalette: AtlasPalette, allBlocks: TBlockCollection) {
+        if (params.minBlockCount <= 0 && params.maxUniqueBlocks <= 0) {
+            return;
+        }
+
+        const sorted = this.getBlockCounts();
+        let kept = sorted;
+        if (params.minBlockCount > 0) {
+            kept = kept.filter((entry) => entry.count >= params.minBlockCount);
+        }
+        if (params.maxUniqueBlocks > 0) {
+            kept = kept.slice(0, params.maxUniqueBlocks);
+        }
+        if (kept.length === 0) {
+            kept = sorted.slice(0, 1); // Always keep the most used block
+        }
+        if (kept.length === sorted.length) {
+            return;
+        }
+
+        const keptNames = new Set(kept.map((entry) => entry.name));
+        const exclude = Array.from(allBlocks.blocks.keys()).filter((name) => !keptNames.has(name));
+        const keptCollection = atlasPalette.createBlockCollection(exclude);
+
+        // Fallable blocks must still obey the chosen falling behaviour
+        const fallable = AppRuntimeConstants.Get.FALLABLE_BLOCKS;
+        const keptNonFallableNames = kept.map((entry) => entry.name).filter((name) => !fallable.has(name));
+        const keptNonFallable = keptNonFallableNames.length > 0 ?
+            atlasPalette.createBlockCollection(Array.from(allBlocks.blocks.keys()).filter((name) => !keptNames.has(name) || fallable.has(name))) :
+            keptCollection;
+
+        this._blocks.forEach((block) => {
+            if (keptNames.has(block.blockInfo.name)) {
+                return;
+            }
+            const voxel = block.voxel;
+            const colour = this._getFinalVoxelColour(voxel, params);
+            const faceVisibility = params.contextualAveraging ?
+                this._voxelMesh.getFaceVisibility(voxel.position) :
+                VoxelMesh.getFullFaceVisibility();
+            let replacement = atlasPalette.getBlock(colour, keptCollection, faceVisibility, params.errorWeight, params.colourSpace);
+            const isSupported = this._voxelMesh.isVoxelAt(Vector3.add(voxel.position, new Vector3(0, -1, 0)));
+            const mustAvoidFalling = fallable.has(replacement.name) && (
+                params.fallable === 'replace-fallable' ||
+                (params.fallable === 'replace-falling' && !isSupported)
+            );
+            if (mustAvoidFalling) {
+                replacement = atlasPalette.getBlock(colour, keptNonFallable, faceVisibility, params.errorWeight, params.colourSpace);
+            }
+            block.blockInfo = replacement;
+        });
+
+        this._blocksUsed = new Set(this.getBlockCounts().map((entry) => entry.name));
+    }
+
+    /**
+     * A stairs or slab cell can only be a block that has that shape, so other blocks are swapped
+     * for the closest colour among the palette blocks that do.
+     */
+    private _enforceShapeBlocks(params: AssignParams.Input, atlasPalette: AtlasPalette, allBlocks: TBlockCollection) {
+        const needsSwap = (block: Block) => block.voxel.shape !== undefined && SlabUtil.variantOf(block.voxel.shape, block.blockInfo.name) === undefined;
+        const blocks = Array.from(this._blocks.values());
+        if (!blocks.some(needsSwap)) {
+            return;
+        }
+
+        // Swap per kind of shape, a block can have slabs but no stairs
+        for (const kind of ['stairs', 'slab'] as const) {
+            const wanted = blocks.filter((block) => needsSwap(block) && block.voxel.shape?.kind === kind);
+            if (wanted.length === 0) {
+                continue;
+            }
+            const probe = kind === 'slab' ? { kind, type: 'bottom' as const } : { kind, facing: 'north' as const, half: 'bottom' as const, shape: 'straight' as const };
+            const exclude = Array.from(allBlocks.blocks.keys()).filter((name) => SlabUtil.variantOf(probe, name) === undefined);
+            if (exclude.length === allBlocks.blocks.size) {
+                continue; // Nothing in the palette has this shape, these export as full blocks
+            }
+            const collection = atlasPalette.createBlockCollection(exclude);
+            wanted.forEach((block) => {
+                const colour = this._getFinalVoxelColour(block.voxel, params);
+                block.blockInfo = atlasPalette.getBlock(colour, collection, VoxelMesh.getFullFaceVisibility(), params.errorWeight, params.colourSpace);
+            });
+        }
+        this._blocksUsed = new Set(this.getBlockCounts().map((entry) => entry.name));
     }
 
     // Face order: ['north', 'south', 'up', 'down', 'east', 'west']

@@ -9,14 +9,20 @@ import { LOGF } from './util/log_util';
 import { Vector3 } from './vector';
 import { RenderNextVoxelMeshChunkParams, VoxeliseParams } from './worker_types';
 
+export type TCellShape =
+    | { kind: 'slab', type: 'bottom' | 'top' }
+    | { kind: 'stairs', facing: 'north' | 'east' | 'south' | 'west', half: 'bottom' | 'top', shape: 'straight' | 'inner_left' | 'inner_right' | 'outer_left' | 'outer_right' };
+
 export interface Voxel {
     position: Vector3,
     colour: RGBA,
     collisions: number,
     neighbours: number,
+    // Set when the cell is a slab or a stairs instead of a full block
+    shape?: TCellShape,
 }
 
-export type TVoxelOverlapRule = 'first' | 'average';
+export type TVoxelOverlapRule = 'first' | 'average' | 'replace';
 
 export type TVoxelMeshParams = Pick<VoxeliseParams.Input, 'voxelOverlapRule' | 'enableAmbientOcclusion'>;
 
@@ -93,6 +99,9 @@ export class VoxelMesh {
                 voxel.colour.g = ((voxel.colour.g * voxel.collisions) + colour.g) / (voxel.collisions + 1);
                 voxel.colour.b = ((voxel.colour.b * voxel.collisions) + colour.b) / (voxel.collisions + 1);
                 voxel.colour.a = ((voxel.colour.a * voxel.collisions) + colour.a) / (voxel.collisions + 1);
+                ++voxel.collisions;
+            } else if (this._voxelMeshParams.voxelOverlapRule === 'replace') {
+                voxel.colour = colour;
                 ++voxel.collisions;
             }
         } else {

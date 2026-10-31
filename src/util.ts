@@ -74,7 +74,7 @@ export class UV {
 /* eslint-disable */
 export enum ColourSpace {
     RGB,
-    LAB
+    OKLAB
 }
 /* eslint-enable */
 

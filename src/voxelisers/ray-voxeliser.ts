@@ -57,6 +57,7 @@ export class RayVoxeliser extends IVoxeliser {
         }
         ProgressManager.Get.end(taskHandle);
 
+        this._preserveDetail(mesh, this._voxelMesh!, voxeliseParams);
         mesh.clearTransform();
 
         return this._voxelMesh;

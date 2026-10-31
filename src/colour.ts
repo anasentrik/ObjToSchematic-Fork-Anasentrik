@@ -1,4 +1,5 @@
 import { AppConfig } from './config';
+import { ColourSpace } from './util';
 import { TBrand } from './util/type_util';
 
 const hsv_rgb = require('hsv-rgb');
@@ -124,6 +125,17 @@ export namespace RGBAUtil {
         return squaredDistance;
     }
 
+    /**
+     * Squared distance between two colours in the given colour space.
+     * Alpha is weighted the same way as `squaredDistance`.
+     */
+    export function squaredDistanceInSpace(a: RGBA, b: RGBA, space: ColourSpace) {
+        if (space === ColourSpace.RGB) {
+            return squaredDistance(a, b);
+        }
+        return OklabUtil.squaredDistance(OklabUtil.fromRGBA(a), OklabUtil.fromRGBA(b), a.a - b.a);
+    }
+
     export function copy(a: RGBA): RGBA {
         return {
             r: a.r,
@@ -198,4 +210,39 @@ export namespace RGBAColours {
 
     export const WHITE: RGBA = { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
     export const BLACK: RGBA = { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+}
+
+/**
+ * Oklab (Björn Ottosson) is perceptually uniform, so Euclidean distance
+ * matches how different two colours look far better than sRGB does.
+ */
+export namespace OklabUtil {
+    export type Oklab = { L: number, a: number, b: number };
+
+    // Oklab distances are roughly a third of the size of sRGB ones, scale so
+    // they stay comparable with the texture standard deviation error term.
+    const DISTANCE_SCALE = 3.0;
+
+    const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+
+    export function fromRGBA(c: RGBA): Oklab {
+        const r = toLinear(c.r);
+        const g = toLinear(c.g);
+        const b = toLinear(c.b);
+        const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+        const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+        const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+        return {
+            L: 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            a: 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            b: 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+        };
+    }
+
+    export function squaredDistance(x: Oklab, y: Oklab, alphaDiff: number) {
+        const dL = x.L - y.L;
+        const da = x.a - y.a;
+        const db = x.b - y.b;
+        return (dL * dL + da * da + db * db) * DISTANCE_SCALE + alphaDiff * alphaDiff * AppConfig.Get.ALPHA_BIAS;
+    }
 }

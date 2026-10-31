@@ -81,6 +81,20 @@ export class Mesh {
         this._loadTextures();
     }
 
+    /**
+     * Rotates -90 degrees about X so that a Z-up model (Blender, 3ds Max) stands upright in our Y-up world.
+     */
+    public convertZUpToYUp(flipped = false) {
+        const sign = flipped ? -1 : 1;
+        const rotate = (v: Vector3) => {
+            const y = v.y;
+            v.y = sign * v.z;
+            v.z = -sign * y;
+        };
+        this._vertices.forEach(rotate);
+        this._normals?.forEach(rotate);
+    }
+
     private _rotateMesh(pitch: number, roll: number, yaw: number) {
         const cosa = Math.cos(yaw * degreesToRadians);
         const sina = Math.sin(yaw * degreesToRadians);

@@ -2,7 +2,7 @@ import { Atlas, TAtlasBlock } from './atlas';
 import { RGBA, RGBA_255, RGBAUtil } from './colour';
 import { AppMath } from './math';
 import { Palette } from './palette';
-import { AppTypes, TOptional } from './util';
+import { AppTypes, ColourSpace, TOptional } from './util';
 import { ASSERT } from './util/error_util';
 
 export type TBlockCollection = {
@@ -75,7 +75,7 @@ export class AtlasPalette {
      * @param blockToExclude A list of blocks that should not be used, this should be a subset of the palette blocks.
      * @returns
      */
-    public getBlock(colour: RGBA_255, blockCollection: TBlockCollection, faceVisibility: EFaceVisibility, errorWeight: number) {
+    public getBlock(colour: RGBA_255, blockCollection: TBlockCollection, faceVisibility: EFaceVisibility, errorWeight: number, colourSpace: ColourSpace = ColourSpace.RGB) {
         const colourHash = RGBAUtil.hash255(colour);
         const contextHash: BigInt = (BigInt(colourHash) << BigInt(6)) + BigInt(faceVisibility);
 
@@ -94,7 +94,7 @@ export class AtlasPalette {
                 const contextualBlockColour = faceVisibility !== EFaceVisibility.None ? context.colour : blockData.colour;
                 const contextualStd = faceVisibility !== EFaceVisibility.None ? context.std : 0.0;
                 const floatColour = RGBAUtil.fromRGBA255(colour);
-                const rgbError = RGBAUtil.squaredDistance(floatColour, contextualBlockColour);
+                const rgbError = RGBAUtil.squaredDistanceInSpace(floatColour, contextualBlockColour, colourSpace);
                 const stdError = contextualStd;
                 const totalError = AppMath.lerp(errorWeight, rgbError, stdError);
                 if (totalError < minError) {

@@ -10,7 +10,7 @@ import { LOC, Localiser, TLocalisedString } from '../localiser';
 import { MaterialMapManager } from '../material-map';
 import { MaterialType } from '../mesh';
 import { MeshType, Renderer } from '../renderer';
-import { EAction } from '../util';
+import { ColourSpace, EAction } from '../util';
 import { ASSERT } from '../util/error_util';
 import { TAxis } from '../util/type_util';
 import { TDithering } from '../util/type_util';
@@ -26,6 +26,7 @@ import { HeaderComponent } from './components/header';
 import { PaletteComponent } from './components/palette';
 import { PlaceholderComponent } from './components/placeholder';
 import { SliderComponent } from './components/slider';
+import { TextComponent } from './components/text_input';
 import { SolidMaterialComponent } from './components/solid_material';
 import { TexturedMaterialComponent } from './components/textured_material';
 import { ToolbarItemComponent } from './components/toolbar_item';
@@ -108,7 +109,25 @@ export class UI {
             label: LOC('import.heading'),
             components: {
                 'input': new FileComponent()
-                    .setLabel('import.components.input'),
+                    .setLabel('import.components.input')
+                    .addValueChangedListener(() => {
+                        // Picking or dropping a file goes straight to blocks
+                        this._appContext?.doAll([EAction.Import, EAction.Voxelise, EAction.Assign]);
+                    }),
+                'upAxis': new ComboboxComponent<'y' | 'z' | '-z'>()
+                    .addItems([{
+                        displayLocKey: 'import.components.up_axis_nz',
+                        payload: '-z',
+                    },
+                    {
+                        displayLocKey: 'import.components.up_axis_y',
+                        payload: 'y',
+                    },
+                    {
+                        displayLocKey: 'import.components.up_axis_z',
+                        payload: 'z',
+                    }])
+                    .setLabel('import.components.up_axis'),
                 'rotation': new VectorComponent()
                     .setLabel('import.components.rotation')
                     .setOnMouseEnterExit((state, component) => {
@@ -119,10 +138,10 @@ export class UI {
                         }
                     }),
             },
-            componentOrder: ['input', 'rotation'],
+            componentOrder: ['input', 'upAxis', 'rotation'],
             execButton: new ButtonComponent()
                 .setOnClick(() => {
-                    this._appContext?.do(EAction.Import);
+                    this._appContext?.doAll([EAction.Import, EAction.Voxelise, EAction.Assign]);
                 })
                 .setLabel(LOC('import.button')),
         },
@@ -182,6 +201,11 @@ export class UI {
                     .addItem({ payload: 'bvh-ray', displayLocKey: 'voxelise.components.bvh_ray' })
                     .addItem({ payload: 'ncrb', displayLocKey: 'voxelise.components.ncrb' })
                     .setLabel('voxelise.components.algorithm'),
+                'useStairs': new CheckboxComponent()
+                    .setCheckedText('voxelise.components.on_slabs')
+                    .setUncheckedText('assign.components.off')
+                    .setDefaultValue(false)
+                    .setLabel('voxelise.components.use_stairs'),
                 'ambientOcclusion': new CheckboxComponent()
                     .setCheckedText('voxelise.components.on_recommended')
                     .setUncheckedText('voxelise.components.off_faster')
@@ -192,16 +216,28 @@ export class UI {
                     .setUncheckedText('voxelise.components.off_faster')
                     .setDefaultValue(true)
                     .setLabel('voxelise.components.multisampling'),
+                'preserveDetail': new CheckboxComponent()
+                    .setCheckedText('voxelise.components.on_recommended')
+                    .setUncheckedText('voxelise.components.off_faster')
+                    .setDefaultValue(true)
+                    .setLabel('voxelise.components.preserve_detail'),
                 'voxelOverlapRule': new ComboboxComponent<TVoxelOverlapRule>()
                     .addItem({
                         displayLocKey: 'voxelise.components.average_recommended',
                         payload: 'average',
                     })
                     .addItem({
-                        displayLocKey: 'voxelise.components.first',
-                        payload: 'first',
+                        displayLocKey: 'voxelise.components.replace',
+                        payload: 'replace',
                     })
                     .setLabel('voxelise.components.voxel_overlap'),
+                'normalBias': new SliderComponent()
+                    .setMin(-0.5)
+                    .setMax(0.5)
+                    .setDefaultValue(0.0)
+                    .setDecimals(2)
+                    .setStep(0.01)
+                    .setLabel('voxelise.components.normal_bias'),
                 'placeholder': new PlaceholderComponent()
                     .setPlaceholderText('misc.advanced_settings'),
             },
@@ -210,9 +246,12 @@ export class UI {
                 'size',
                 'placeholder',
                 'voxeliser',
+                'useStairs',
                 'ambientOcclusion',
                 'multisampleColouring',
+                'preserveDetail',
                 'voxelOverlapRule',
+                'normalBias',
             ],
             execButton: new ButtonComponent()
                 .setOnClick(() => {
@@ -230,6 +269,21 @@ export class UI {
                     .setShouldObeyGroupEnables(false),
                 'blockPalette': new PaletteComponent()
                     .setLabel('assign.components.block_palette'),
+                'excludeFalling': new CheckboxComponent()
+                    .setCheckedText('voxelise.components.on_recommended')
+                    .setUncheckedText('assign.components.off')
+                    .setDefaultValue(true)
+                    .setLabel('assign.components.exclude_falling'),
+                'excludeGlass': new CheckboxComponent()
+                    .setCheckedText('voxelise.components.on_recommended')
+                    .setUncheckedText('assign.components.off')
+                    .setDefaultValue(true)
+                    .setLabel('assign.components.exclude_glass'),
+                'excludeLiquids': new CheckboxComponent()
+                    .setCheckedText('voxelise.components.on_recommended')
+                    .setUncheckedText('assign.components.off')
+                    .setDefaultValue(true)
+                    .setLabel('assign.components.exclude_liquids'),
                 'dithering': new ComboboxComponent<TDithering>()
                     .addItems([{
                         displayLocKey: 'assign.components.ordered',
@@ -272,6 +326,16 @@ export class UI {
                         payload: 'do-nothing',
                     }])
                     .setLabel('assign.components.fallable_blocks'),
+                'colourSpace': new ComboboxComponent<ColourSpace>()
+                    .addItems([{
+                        displayLocKey: 'assign.components.oklab',
+                        payload: ColourSpace.OKLAB,
+                    },
+                    {
+                        displayLocKey: 'assign.components.rgb',
+                        payload: ColourSpace.RGB,
+                    }])
+                    .setLabel('assign.components.colour_space'),
                 'colourAccuracy': new SliderComponent()
                     .setMin(1)
                     .setMax(8)
@@ -279,6 +343,20 @@ export class UI {
                     .setDecimals(1)
                     .setStep(0.1)
                     .setLabel('assign.components.colour_accuracy'),
+                'minBlockCount': new SliderComponent()
+                    .setMin(0)
+                    .setMax(1024)
+                    .setDefaultValue(0)
+                    .setDecimals(0)
+                    .setStep(1)
+                    .setLabel('assign.components.min_block_count'),
+                'maxUniqueBlocks': new SliderComponent()
+                    .setMin(0)
+                    .setMax(256)
+                    .setDefaultValue(0)
+                    .setDecimals(0)
+                    .setStep(1)
+                    .setLabel('assign.components.unique_blocks'),
                 'contextualAveraging': new CheckboxComponent()
                     .setCheckedText('voxelise.components.on_recommended')
                     .setUncheckedText('voxelise.components.off_faster')
@@ -317,12 +395,18 @@ export class UI {
             },
             componentOrder: [
                 'blockPalette',
+                'excludeFalling',
+                'excludeGlass',
+                'excludeLiquids',
                 'dithering',
                 'placeholder',
                 'textureAtlas',
                 'ditheringMagnitude',
                 'fallable',
+                'colourSpace',
                 'colourAccuracy',
+                'minBlockCount',
+                'maxUniqueBlocks',
                 'contextualAveraging',
                 'errorWeight',
                 'calculateLighting',
@@ -341,6 +425,10 @@ export class UI {
                 'export': new ComboboxComponent<TExporters>()
                     .addItems([
                         {
+                            displayLocKey: 'export.components.sponge_schematic',
+                            payload: 'schem',
+                        },
+                        {
                             displayLocKey: 'export.components.litematic',
                             payload: 'litematic',
                         },
@@ -355,10 +443,6 @@ export class UI {
                         },
                         */
                         {
-                            displayLocKey: 'export.components.sponge_schematic',
-                            payload: 'schem',
-                        },
-                        {
                             displayLocKey: 'export.components.structure_blocks',
                             payload: 'nbt',
                         },
@@ -372,8 +456,10 @@ export class UI {
                         },
                     ])
                     .setLabel('export.components.exporter'),
+                'fileName': new TextComponent()
+                    .setLabel('export.components.file_name'),
             },
-            componentOrder: ['export'],
+            componentOrder: ['export', 'fileName'],
             execButton: new ButtonComponent()
                 .setLabel(LOC('export.button'))
                 .setOnClick(() => {
@@ -548,6 +634,13 @@ export class UI {
 
     private _appContext?: AppContext;
 
+    /** Runs voxelise and assign back to back, like the single 'convert' step of the web version. */
+    private _runAllButton = new ButtonComponent()
+        .setLabel(LOC('voxelise.run_all'))
+        .setOnClick(() => {
+            this._appContext?.doAll([EAction.Voxelise, EAction.Assign]);
+        });
+
     public bindToContext(context: AppContext) {
         this._appContext = context;
     }
@@ -589,6 +682,7 @@ export class UI {
             sidebarHTML.add(`<div class="container-properties">`);
             {
                 sidebarHTML.add(HeaderComponent.Get.generateHTML());
+                sidebarHTML.add(this._runAllButton.generateHTML());
 
                 for (const groupName of this.uiOrder) {
                     const group = this._uiDull[groupName];
@@ -637,8 +731,8 @@ export class UI {
         AppConsole.Get.build();
 
         Split(['.column-sidebar', '.column-canvas'], {
-            sizes: [20, 80],
-            minSize: [600, 500],
+            sizes: [25, 75],
+            minSize: [420, 400],
             gutterSize: 5,
         });
 
@@ -695,7 +789,7 @@ export class UI {
 
     private _handleLanguageChange() {
         HeaderComponent.Get.refresh();
-
+        this._runAllButton.setLabel(LOC('voxelise.run_all')).updateLabel();
 
         Object.values(this._toolbarLeft.groups).forEach((group) => {
             Object.values(group.components).forEach((comp) => {
@@ -758,15 +852,69 @@ export class UI {
     }
 
     private _getGroupHTML(group: Group) {
+        const breakdownHTML = group.id === 'assign' ? '<div class="block-breakdown" id="block_breakdown"></div>' : '';
         return `
-            <div id="component_header_${group.id}">
-                ${MiscComponents.createGroupHeader(group.label)}
+            <div class="wizard-section" id="wizard_section_${group.id}">
+                <div class="wizard-header" id="component_header_${group.id}">
+                    ${MiscComponents.createGroupHeader(group.label)}
+                </div>
+                <div class="wizard-body" id="wizard_body_${group.id}">
+                    <div class="component-group" id="subcomponents_${group.id}">
+                        ${this._getComponentsHTML(group)}
+                    </div>
+                    ${group.execButton?.generateHTML() ?? ''}
+                    ${breakdownHTML}
+                </div>
             </div>
-            <div class="component-group" id="subcomponents_${group.id}">
-                ${this._getComponentsHTML(group)}
-            </div>
-            ${group.execButton?.generateHTML() ?? ''}
         `;
+    }
+
+    /**
+     * Expands or collapses one section of the sidebar.
+     */
+    public setSectionOpen(groupId: string, isOpen: boolean) {
+        const section = document.getElementById(`wizard_section_${groupId}`);
+        section?.classList.toggle('collapsed', !isOpen);
+    }
+
+    /**
+     * Fills the block breakdown list shown under the block settings.
+     * `onRemove` is called with the block name when its remove button is clicked.
+     */
+    public setBlockBreakdown(counts: { name: string, count: number }[], onRemove: (blockName: string) => void) {
+        const element = UIUtil.getElementById('block_breakdown');
+        const total = counts.reduce((sum, entry) => sum + entry.count, 0);
+        const removeLabel = LOC('assign.breakdown_remove');
+
+        const rows = counts.map((entry) => `
+            <div class="breakdown-row">
+                <div class="breakdown-name">${entry.name}</div>
+                <div class="breakdown-count">${entry.count.toLocaleString()}</div>
+                <div class="breakdown-remove" data-block="${entry.name}" title="${removeLabel}">×</div>
+            </div>
+        `).join('');
+
+        element.innerHTML = `
+            <div class="container-group-heading breakdown-title">
+                <div class="group-heading">${LOC('assign.breakdown_title')}</div>
+            </div>
+            <div class="breakdown-box">
+                <div class="breakdown-summary">
+                    <span>${LOC('assign.breakdown_unique', { count: counts.length })}</span>
+                    <span>${LOC('assign.breakdown_total', { count: total })}</span>
+                </div>
+                <div class="breakdown-list">${rows}</div>
+            </div>
+        `;
+
+        element.querySelectorAll('.breakdown-remove').forEach((button) => {
+            button.addEventListener('click', () => {
+                const blockName = button.getAttribute('data-block');
+                if (blockName !== null) {
+                    onRemove(blockName);
+                }
+            });
+        });
     }
 
     public getActionButton(action: EAction) {
@@ -777,6 +925,19 @@ export class UI {
     public registerEvents() {
         HeaderComponent.Get.registerEvents();
         HeaderComponent.Get.finalise();
+
+        this._runAllButton.registerEvents();
+        this._runAllButton.finalise();
+
+        // Collapsible sections: only the import step starts expanded
+        for (const groupId of this.uiOrder) {
+            const header = UIUtil.getElementById(`component_header_${groupId}`);
+            header.addEventListener('click', () => {
+                const section = UIUtil.getElementById(`wizard_section_${groupId}`);
+                this.setSectionOpen(groupId, section.classList.contains('collapsed'));
+            });
+            this.setSectionOpen(groupId, groupId === 'import');
+        }
 
         for (let action = 0; action < EAction.MAX; ++action) {
             this._forEachComponent(action, (component) => {
@@ -826,6 +987,9 @@ export class UI {
                 component.setEnabled(true);
             });
             this._getGroup(action).execButton?.setEnabled(true);
+            if (action === EAction.Voxelise) {
+                this._runAllButton.setEnabled(true);
+            }
         }
     }
 
@@ -848,6 +1012,10 @@ export class UI {
             });
 
             this._getGroup(i).execButton?.setEnabled(false);
+        }
+
+        if (action <= EAction.Voxelise) {
+            this._runAllButton.setEnabled(false);
         }
     }
 

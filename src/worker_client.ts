@@ -1,3 +1,5 @@
+import { AppConfig } from './config';
+import { SlabUtil } from './slab';
 import path from 'path';
 
 import { Atlas } from './atlas';
@@ -85,6 +87,9 @@ export class WorkerClient {
         const importer = ImporterFactor.GetImporter(parsed.ext === '.obj' ? 'obj' : 'gltf');
         this._loadedMesh = await importer.import(params.file);
 
+        if (params.upAxis !== 'y') {
+            this._loadedMesh.convertZUpToYUp(params.upAxis === '-z');
+        }
         this._loadedMesh.processMesh(params.rotation.y, params.rotation.x, params.rotation.z);
 
         return {
@@ -119,7 +124,13 @@ export class WorkerClient {
         ASSERT(this._loadedMesh !== undefined);
 
         const voxeliser: IVoxeliser = VoxeliserFactory.GetVoxeliser(params.voxeliser);
-        this._loadedVoxelMesh = voxeliser.voxelise(this._loadedMesh, params);
+        if (params.useStairs) {
+            // Voxelise at twice the size, every 2x2x2 group of voxels becomes a block, a stairs or a slab
+            const fineParams = { ...params, size: params.size * 2 };
+            this._loadedVoxelMesh = SlabUtil.fit(voxeliser.voxelise(this._loadedMesh, fineParams), params);
+        } else {
+            this._loadedVoxelMesh = voxeliser.voxelise(this._loadedMesh, params);
+        }
         this._loadedVoxelMesh.calculateNeighbours();
 
         this._voxelMeshChunkIndex = 0;
@@ -154,7 +165,9 @@ export class WorkerClient {
         return {
             buffer: buffer,
             dimensions: this._loadedVoxelMesh.getBounds().getDimensions(),
-            voxelSize: 1.0 / params.desiredHeight,
+            boundsMin: this._loadedVoxelMesh.getBounds().min,
+            boundsMax: this._loadedVoxelMesh.getBounds().max,
+            voxelSize: AppConfig.Get.BLOCK_SIZE_UNITS,
             moreVoxelsToBuffer: buffer.moreVoxelsToBuffer,
             isFirstChunk: isFirstChunk,
         };
@@ -168,6 +181,7 @@ export class WorkerClient {
         this._blockMeshChunkIndex = 0;
 
         return {
+            blockCounts: this._loadedBlockMesh.getBlockCounts(),
         };
     }
 

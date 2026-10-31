@@ -13,7 +13,7 @@ export class AppConfig {
     public readonly MINOR_VERSION = 9;
     public readonly HOTFIX_VERSION = 0;
     public readonly VERSION_TYPE: 'd' | 'a' | 'r' = 'r'; // dev, alpha, or release build
-    public readonly MINECRAFT_VERSION = '1.20.1';
+    public readonly MINECRAFT_VERSION = '26.3';
 
     public readonly LOCALE = 'en-GB';
     public readonly VOXEL_BUFFER_CHUNK_SIZE = 50_000;
@@ -27,6 +27,8 @@ export class AppConfig {
     public readonly CAMERA_FOV_DEGREES = 30.0;
     public readonly CAMERA_MINIMUM_DISTANCE = 0.125;
     public readonly CAMERA_DEFAULT_DISTANCE_UNITS = 4.0;
+    // World size of one block. Fixed, so a bigger Size makes a bigger model next to the 64x64 floor
+    public readonly BLOCK_SIZE_UNITS = 1.0 / 80.0;
     public readonly CAMERA_DEFAULT_AZIMUTH_RADIANS = -1.0;
     public readonly CAMERA_DEFAULT_ELEVATION_RADIANS = 1.3;
     public readonly CAMERA_SENSITIVITY_ROTATION = 0.005;

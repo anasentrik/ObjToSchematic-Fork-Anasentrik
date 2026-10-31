@@ -100,6 +100,26 @@ export class Renderer {
     };
     private _gridEnabled: boolean;
 
+    // Floor grid (64x64 blocks) that sits under the lowest block, like the feet of the player
+    private _floorGrid?: RenderBuffer;
+    // Shown before anything is imported so the viewport is not an empty void
+    private _emptyFloor = DebugGeometryTemplates.gridY(new Vector3(64 * AppConfig.Get.BLOCK_SIZE_UNITS, 0, 64 * AppConfig.Get.BLOCK_SIZE_UNITS), AppConfig.Get.BLOCK_SIZE_UNITS);
+    private _floorY = 0.0;
+    private _floorShift = new Vector3(0, 0, 0);
+
+    // Box around the voxel/block mesh with a handle on top that is dragged to resize it
+    private _meshBox?: Bounds;
+    private _boxBuffer?: RenderBuffer;
+    private _handleBuffer?: RenderBuffer;
+    private _resizeScale = 1.0;
+    private _resizeDrag?: { startY: number, startSize: number, screenHeight: number, size: number };
+    public resizeHooks?: {
+        canResize: () => boolean,
+        getSize: () => number,
+        setSize: (size: number) => void,
+        commit: (size: number) => void,
+    };
+
     private static _instance: Renderer;
     public static get Get() {
         return this._instance || (this._instance = new this());
@@ -123,7 +143,7 @@ export class Renderer {
         this._materialBuffers = new Map();
 
         this._gridBuffers = { x: {}, y: {}, z: {} };
-        this._gridEnabled = false;
+        this._gridEnabled = true;
 
         this._isGridComponentEnabled = {};
         this._axesEnabled = true;
@@ -145,6 +165,9 @@ export class Renderer {
         });
 
         resizeObserver.observe(UIUtil.getElementById('canvas'));
+
+        document.addEventListener('mousemove', (e) => this._onResizeMouseMove(e));
+        document.addEventListener('mouseup', () => this._onResizeMouseUp());
 
         {
             this._axisHighlightBuffer = {
@@ -437,11 +460,203 @@ export class Renderer {
             this._gridBuffers.y[MeshType.VoxelMesh] = DebugGeometryTemplates.gridY(Vector3.mulScalar(dimensions, voxelSize), voxelSize);
             this._gridBuffers.z[MeshType.VoxelMesh] = DebugGeometryTemplates.gridZ(Vector3.mulScalar(dimensions, voxelSize), voxelSize);
 
+            this._setupFloorAndBox(params);
+
             this._modelsAvailable = 2;
             this.setModelToUse(MeshType.VoxelMesh);
         }
 
         this.forceRedraw();
+    }
+
+    private _setupFloorAndBox(params: RenderNextVoxelMeshChunkParams.Output) {
+        const voxelSize = params.voxelSize;
+        const min = new Vector3(0, 0, 0);
+        const max = new Vector3(0, 0, 0);
+        min.setFrom(params.boundsMin);
+        max.setFrom(params.boundsMax);
+
+        // Voxels are cubes centred on their position, shifted by the grid offset
+        const worldMin = Vector3.add(min, this._gridOffset).sub(0.5).mulScalar(voxelSize);
+        const worldMax = Vector3.add(max, this._gridOffset).add(0.5).mulScalar(voxelSize);
+        this._meshBox = new Bounds(worldMin, worldMax);
+        this._floorY = worldMin.y;
+        this._resizeScale = 1.0;
+        this._resizeDrag = undefined;
+
+        // Always 64x64 blocks, so a model that goes past it is easy to spot. Lines lined up with the block edges
+        const extent = 64;
+        this._floorGrid = DebugGeometryTemplates.gridY(new Vector3(extent * voxelSize, 0, extent * voxelSize), voxelSize);
+        this._floorShift = new Vector3(
+            this._gridOffset.x === 0 ? 0.5 * voxelSize : 0,
+            0,
+            this._gridOffset.z === 0 ? 0.5 * voxelSize : 0,
+        );
+
+        // Keep a model that grew in view, the default distance fits a model about one unit big
+        const modelSize = Math.max(worldMax.x - worldMin.x, worldMax.y - worldMin.y, worldMax.z - worldMin.z);
+        ArcballCamera.Get.ensureDistance(AppConfig.Get.CAMERA_DEFAULT_DISTANCE_UNITS * modelSize);
+
+        this._boxBuffer = new RenderBuffer([
+            { name: 'position', numComponents: 3 },
+            { name: 'colour', numComponents: 4 },
+        ]);
+        this._boxBuffer.add(DebugGeometryTemplates.bounds(this._meshBox, { r: 1.0, g: 1.0, b: 1.0, a: 0.8 }));
+
+        this._handleBuffer = new RenderBuffer([
+            { name: 'position', numComponents: 3 },
+            { name: 'colour', numComponents: 4 },
+        ]);
+        this._handleBuffer.add(Renderer._solidArrow(new Vector3((worldMin.x + worldMax.x) / 2, worldMax.y + 0.02, (worldMin.z + worldMax.z) / 2)));
+    }
+
+    /**
+     * A big solid arrow pointing up, easy to see and to grab. Drawn as triangles.
+     */
+    private static _solidArrow(base: Vector3) {
+        const shaftHalf = 0.018;
+        const headHalf = 0.055;
+        const shaftLength = 0.12;
+        const headLength = 0.09;
+        const position: number[] = [];
+        const colour: number[] = [];
+        const indices: number[] = [];
+
+        const addFace = (points: number[][], shade: number) => {
+            const first = position.length / 3;
+            points.forEach((p) => {
+                position.push(base.x + p[0], base.y + p[1], base.z + p[2]);
+                colour.push(shade, shade, shade, 1.0);
+            });
+            for (let i = 1; i < points.length - 1; ++i) {
+                indices.push(first, first + i, first + i + 1);
+            }
+        };
+
+        // Square corners at height y with half width w, in the order -x-z, +x-z, +x+z, -x+z
+        const ring = (y: number, w: number) => [[-w, y, -w], [w, y, -w], [w, y, w], [-w, y, w]];
+        const shaftBottom = ring(0, shaftHalf);
+        const shaftTop = ring(shaftLength, shaftHalf);
+        const shades = [0.65, 1.0, 0.8, 0.55];
+        for (let i = 0; i < 4; ++i) {
+            const j = (i + 1) % 4;
+            addFace([shaftBottom[i], shaftBottom[j], shaftTop[j], shaftTop[i]], shades[i]);
+        }
+
+        const headBase = ring(shaftLength, headHalf);
+        const apex = [0, shaftLength + headLength, 0];
+        for (let i = 0; i < 4; ++i) {
+            addFace([headBase[i], headBase[(i + 1) % 4], apex], shades[i]);
+        }
+        addFace([headBase[0], headBase[3], headBase[2], headBase[1]], 0.5);
+
+        return {
+            indices: new Uint32Array(indices),
+            custom: { position, colour },
+        };
+    }
+
+    private _isResizeAvailable() {
+        return (this._meshToUse === MeshType.VoxelMesh || this._meshToUse === MeshType.BlockMesh)
+            && this._meshBox !== undefined && !this._sliceViewEnabled
+            && this.resizeHooks !== undefined && this.resizeHooks.canResize();
+    }
+
+    private _modelMatrix() {
+        const s = this._resizeScale;
+        return twgl.m4.multiply(
+            twgl.m4.translation([0, this._floorY, 0]),
+            twgl.m4.multiply(twgl.m4.scaling([s, s, s]), twgl.m4.translation([0, -this._floorY, 0])),
+        );
+    }
+
+    private _meshWorldViewProjection() {
+        return twgl.m4.multiply(ArcballCamera.Get.getViewProjection(), this._modelMatrix());
+    }
+
+    /** Screen position (CSS pixels, relative to the canvas) of a point, moved with the mesh. */
+    private _project(point: Vector3) {
+        const canvas = this._gl.canvas as HTMLCanvasElement;
+        const rect = canvas.getBoundingClientRect();
+        const ndc = twgl.m4.transformPoint(this._meshWorldViewProjection(), point.toArray());
+        return {
+            x: (ndc[0] + 1) / 2 * rect.width,
+            y: (1 - ndc[1]) / 2 * rect.height,
+            left: rect.left,
+            top: rect.top,
+        };
+    }
+
+    private _handlePoints() {
+        ASSERT(this._meshBox !== undefined);
+        const min = this._meshBox.min;
+        const max = this._meshBox.max;
+        const cx = (min.x + max.x) / 2;
+        const cz = (min.z + max.z) / 2;
+        return { top: new Vector3(cx, max.y, cz), grip: new Vector3(cx, max.y + 0.11, cz), base: new Vector3(cx, min.y, cz) };
+    }
+
+    private _distanceToHandle(e: MouseEvent) {
+        const handle = this._project(this._handlePoints().grip);
+        const dx = e.clientX - handle.left - handle.x;
+        const dy = e.clientY - handle.top - handle.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /**
+     * Called by the camera on mouse down, returns true if the click grabbed the resize handle
+     * (so the camera must not start rotating).
+     */
+    public tryBeginResize(e: MouseEvent): boolean {
+        if (e.buttons !== 1 || !this._isResizeAvailable() || this._distanceToHandle(e) > 45) {
+            return false;
+        }
+        const { top, base } = this._handlePoints();
+        const size = this.resizeHooks!.getSize();
+        this._resizeDrag = {
+            startY: e.clientY,
+            startSize: size,
+            screenHeight: Math.max(40, Math.abs(this._project(base).y - this._project(top).y)),
+            size: size,
+        };
+        return true;
+    }
+
+    private _onResizeMouseMove(e: MouseEvent) {
+        const canvas = this._gl.canvas as HTMLCanvasElement;
+        const drag = this._resizeDrag;
+        if (drag === undefined) {
+            if (e.target === canvas && e.buttons === 0) {
+                canvas.style.cursor = this._isResizeAvailable() && this._distanceToHandle(e) <= 45 ? 'ns-resize' : '';
+            }
+            return;
+        }
+        const factor = 1.0 + (drag.startY - e.clientY) / drag.screenHeight;
+        const size = Math.round(Math.min(
+            AppConfig.Get.CONSTRAINT_MAXIMUM_HEIGHT,
+            Math.max(AppConfig.Get.CONSTRAINT_MINIMUM_HEIGHT, drag.startSize * factor),
+        ));
+        if (size !== drag.size) {
+            drag.size = size;
+            this._resizeScale = size / drag.startSize;
+            this.resizeHooks?.setSize(size);
+            this.forceRedraw();
+        }
+    }
+
+    private _onResizeMouseUp() {
+        const drag = this._resizeDrag;
+        if (drag === undefined) {
+            return;
+        }
+        this._resizeDrag = undefined;
+        (this._gl.canvas as HTMLCanvasElement).style.cursor = '';
+        if (drag.size !== drag.startSize) {
+            this.resizeHooks?.commit(drag.size);
+        } else {
+            this._resizeScale = 1.0;
+            this.forceRedraw();
+        }
     }
 
     /*
@@ -553,6 +768,17 @@ export class Renderer {
                         u_worldViewProjection: ArcballCamera.Get.getWorldViewProjection(),
                     });
                 }
+            } else if (this._meshToUse === MeshType.None) {
+                this._drawBuffer(this._gl.LINES, this._emptyFloor.getWebGLBuffer(), ShaderManager.Get.debugProgram, {
+                    u_worldViewProjection: ArcballCamera.Get.getWorldViewProjection(),
+                    u_worldOffset: [0.5 * AppConfig.Get.BLOCK_SIZE_UNITS, -0.5, 0.5 * AppConfig.Get.BLOCK_SIZE_UNITS],
+                });
+            } else if (this._floorGrid !== undefined && !this._sliceViewEnabled
+                && (this._meshToUse === MeshType.VoxelMesh || this._meshToUse === MeshType.BlockMesh)) {
+                this._drawBuffer(this._gl.LINES, this._floorGrid.getWebGLBuffer(), ShaderManager.Get.debugProgram, {
+                    u_worldViewProjection: ArcballCamera.Get.getWorldViewProjection(),
+                    u_worldOffset: [this._floorShift.x, this._floorY, this._floorShift.z],
+                });
             } else {
                 const gridBuffer = this._gridBuffers.y[this._meshToUse];
                 if (gridBuffer !== undefined) {
@@ -562,6 +788,15 @@ export class Renderer {
                     });
                 }
             }
+        }
+
+        // Draw the resize box and handle
+        if (this._isResizeAvailable() && this._boxBuffer !== undefined && this._handleBuffer !== undefined) {
+            const uniforms = { u_worldViewProjection: this._meshWorldViewProjection() };
+            this._drawBuffer(this._gl.LINES, this._boxBuffer.getWebGLBuffer(), ShaderManager.Get.debugProgram, uniforms);
+            this._gl.disable(this._gl.DEPTH_TEST);
+            this._drawBuffer(this._gl.TRIANGLES, this._handleBuffer.getWebGLBuffer(), ShaderManager.Get.debugProgram, uniforms);
+            this._gl.enable(this._gl.DEPTH_TEST);
         }
 
         // Draw axis
@@ -606,7 +841,7 @@ export class Renderer {
     private _drawVoxelMesh() {
         const shader = ShaderManager.Get.voxelProgram;
         const uniforms = {
-            u_worldViewProjection: ArcballCamera.Get.getWorldViewProjection(),
+            u_worldViewProjection: this._meshWorldViewProjection(),
             u_voxelSize: this._voxelSize,
             u_gridOffset: this._gridOffset.toArray(),
             u_ambientOcclusion: this._allVoxelChunks,
@@ -623,7 +858,7 @@ export class Renderer {
         this._gl.enable(this._gl.CULL_FACE);
         const shader = ShaderManager.Get.blockProgram;
         const uniforms = {
-            u_worldViewProjection: ArcballCamera.Get.getWorldViewProjection(),
+            u_worldViewProjection: this._meshWorldViewProjection(),
             u_texture: this._atlasTexture,
             u_voxelSize: this._voxelSize,
             u_atlasSize: this._atlasSize,
@@ -669,7 +904,8 @@ export class Renderer {
     private _drawBuffer(drawMode: number, buffer: { numElements: number, buffer: twgl.BufferInfo }, shader: twgl.ProgramInfo, uniforms: any) {
         this._gl.useProgram(shader.program);
         twgl.setBuffersAndAttributes(this._gl, shader, buffer.buffer);
-        twgl.setUniforms(shader, uniforms);
+        // Uniforms persist on the program, so reset the offset that only some debug draws pass
+        twgl.setUniforms(shader, { u_worldOffset: [0, 0, 0], ...uniforms });
         this._gl.drawElements(drawMode, buffer.numElements, this._gl.UNSIGNED_INT, 0);
     }
 
