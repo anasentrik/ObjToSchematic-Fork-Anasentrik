@@ -4,8 +4,10 @@ ObjToSchematic-linux-x64
 ObjToSchematic-darwin-x64
 /res/atlases/*.atlas
 /res/atlases/*.png
-!/res/atlases/vanilla.atlas
-!/res/atlases/vanilla.png
+!/res/atlases/26.3.atlas
+!/res/atlases/26.3.png
+!/res/atlases/1.21.7.atlas
+!/res/atlases/1.21.7.png
 /res/palettes/empty.palette
 /dist
 /dev

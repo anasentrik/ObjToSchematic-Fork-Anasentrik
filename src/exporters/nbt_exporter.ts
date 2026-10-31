@@ -63,7 +63,7 @@ export class NBTExporter extends IExporter {
             value: {
                 DataVersion: {
                     type: TagType.Int,
-                    value: AppConstants.DATA_VERSION,
+                    value: blockMesh.getAtlas().getDataVersion(),
                 },
                 size: {
                     type: TagType.List,

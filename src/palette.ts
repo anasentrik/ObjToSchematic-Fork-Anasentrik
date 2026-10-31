@@ -162,7 +162,7 @@ export class Palette {
         }
 
         if (missingBlocks.length > 0) {
-            StatusHandler.warning(LOC('assign.blocks_missing_textures', { count: missingBlocks }));
+            StatusHandler.warning(LOC('assign.blocks_missing_textures', { count: missingBlocks.length }));
             LOG_WARN('Blocks missing atlas textures', missingBlocks);
         }
     }

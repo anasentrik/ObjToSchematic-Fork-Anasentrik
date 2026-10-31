@@ -21,7 +21,7 @@ export const headlessConfig: THeadlessConfig = {
         useStairs: false,
     },
     assign: {
-        textureAtlas: 'vanilla', // Must be an atlas name that exists in /resources/atlases
+        textureAtlas: '26.3', // Must be an atlas name that exists in /resources/atlases
         blockPalette: PALETTE_ALL_RELEASE, // Must be a palette name that exists in /resources/palettes
         dithering: 'ordered',
         ditheringMagnitude: 32,

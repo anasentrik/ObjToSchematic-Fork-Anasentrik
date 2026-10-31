@@ -153,6 +153,7 @@ export namespace RenderNextBlockMeshChunkParams {
         buffer: TBlockMeshBufferDescription,
         bounds: Bounds,
         atlasTexturePath: string,
+        atlasId: string,
         atlasSize: number,
         moreBlocksToBuffer: boolean,
         isFirstChunk: boolean,

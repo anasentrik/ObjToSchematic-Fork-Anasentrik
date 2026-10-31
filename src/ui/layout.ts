@@ -264,9 +264,9 @@ export class UI {
             label: LOC('assign.heading'),
             components: {
                 'textureAtlas': new ComboboxComponent<string>()
-                    .addItem({ displayLocKey: 'assign.components.vanilla', payload: 'vanilla' })
-                    .setLabel('assign.components.texture_atlas')
-                    .setShouldObeyGroupEnables(false),
+                    .addItem({ displayText: '26.3 (latest)', payload: '26.3' })
+                    .addItem({ displayText: '1.21.7 (original)', payload: '1.21.7' })
+                    .setLabel('assign.components.texture_atlas'),
                 'blockPalette': new PaletteComponent()
                     .setLabel('assign.components.block_palette'),
                 'excludeFalling': new CheckboxComponent()
@@ -394,13 +394,13 @@ export class UI {
                     .setPlaceholderText('misc.advanced_settings'),
             },
             componentOrder: [
+                'textureAtlas',
                 'blockPalette',
                 'excludeFalling',
                 'excludeGlass',
                 'excludeLiquids',
                 'dithering',
                 'placeholder',
-                'textureAtlas',
                 'ditheringMagnitude',
                 'fallable',
                 'colourSpace',

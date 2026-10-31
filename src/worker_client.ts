@@ -216,6 +216,7 @@ export class WorkerClient {
             buffer: buffer,
             bounds: this._loadedBlockMesh.getVoxelMesh().getBounds(),
             atlasTexturePath: atlas.getAtlasTexturePath(),
+            atlasId: params.textureAtlas,
             atlasSize: atlas.getAtlasSize(),
             moreBlocksToBuffer: buffer.moreBlocksToBuffer,
             isFirstChunk: isFirstChunk,

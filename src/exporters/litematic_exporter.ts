@@ -219,7 +219,7 @@ export class Litematic extends IExporter {
                         },
                     },
                 },
-                MinecraftDataVersion: { type: TagType.Int, value: AppConstants.DATA_VERSION },
+                MinecraftDataVersion: { type: TagType.Int, value: blockMesh.getAtlas().getDataVersion() },
                 Version: { type: TagType.Int, value: 5 },
             },
         };

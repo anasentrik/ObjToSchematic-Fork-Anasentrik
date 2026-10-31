@@ -147,7 +147,7 @@ export const en_GB = {
                 apply: 'Apply',
             },
             components: {
-                texture_atlas: 'Texture atlas',
+                texture_atlas: 'Block atlas (Minecraft version)',
                 block_palette: 'Block palette',
                 dithering: 'Dithering',
                 dithering_magnitude: 'Dithering magnitude',

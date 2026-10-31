@@ -1,6 +1,6 @@
 import path from 'path';
 
-import ATLAS_VANILLA from '../res/atlases/vanilla.atlas';
+import { ATLAS_VERSIONS, DEFAULT_ATLAS_VERSION } from './atlas_versions';
 import { RGBA } from './colour';
 import { AppTypes, AppUtil, TOptional, UV } from './util';
 import { ASSERT } from './util/error_util';
@@ -32,11 +32,12 @@ export type TAtlasBlock = {
  * files.
  */
 export class Atlas {
-    public static ATLAS_NAME_REGEX: RegExp = /^[a-zA-Z\-]+$/;
+    public static ATLAS_NAME_REGEX: RegExp = /^[a-zA-Z0-9.\-]+$/;
 
     private _blocks: Map<AppTypes.TNamespacedBlockName, TAtlasBlock>;
     private _atlasSize: number;
     private _atlasName: string;
+    private _dataVersion = 0;
 
     private constructor(atlasName: string) {
         this._blocks = new Map<AppTypes.TNamespacedBlockName, TAtlasBlock>();
@@ -49,11 +50,13 @@ export class Atlas {
     }
 
     public static load(atlasName: string): TOptional<Atlas> {
-        ASSERT(atlasName === 'vanilla');
+        const version = ATLAS_VERSIONS[atlasName];
+        ASSERT(version !== undefined, `Unknown block atlas '${atlasName}'`);
 
         const atlas = new Atlas(atlasName);
+        atlas._dataVersion = version.dataVersion;
 
-        const atlasJSON = JSON.parse(ATLAS_VANILLA);
+        const atlasJSON = JSON.parse(version.atlas);
 
         ASSERT(atlasJSON.formatVersion === 3, `The '${atlasName}' texture atlas uses an outdated format and needs to be recreated`);
 
@@ -120,6 +123,13 @@ export class Atlas {
         return atlas;
     }
 
+    /**
+     * The Minecraft DataVersion of the version this atlas was made from, written into exported files.
+     */
+    public getDataVersion(): number {
+        return this._dataVersion;
+    }
+
     public getAtlasSize(): number {
         return this._atlasSize;
     }
@@ -139,7 +149,7 @@ export class Atlas {
     }
 
     public static getVanillaAtlas(): TOptional<Atlas> {
-        return Atlas.load('vanilla');
+        return Atlas.load(DEFAULT_ATLAS_VERSION);
     }
 
     private static _isValidAtlasName(atlasName: string): boolean {

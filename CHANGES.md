@@ -6,7 +6,8 @@ Other formats (`.litematic`, `.nbt`, `.schematic`, the JSON exporters) are not t
 
 ## Minecraft 26.3
 
-- Block atlas and texture atlas regenerated from the 26.3 client jar (417 blocks, 435 textures). The old 1.21.7 atlas is gone.
+- Block atlas and texture atlas regenerated from the 26.3 client jar (417 blocks, 435 textures).
+- **Block atlas dropdown**: 26.3 (default) or 1.21.7 (the original atlas). Each version writes its own DataVersion into exported files (5023 and 4438). To add a version, see `src/atlas_versions.ts`.
 - Block palette regenerated: 352 blocks, including the new cinnabar, sulfur, resin, poplar, pale oak and copper variants.
 - `DATA_VERSION` is `5023` and the version shown in the UI is `26.3`.
 - `tools/build-atlas.py`, a Python port of `build-atlas.ts` that understands the new `{"sprite": ...}` texture entries in 26.x models.

@@ -75,7 +75,7 @@ export class SchemExporter extends IExporter {
             name: 'Schematic',
             value: {
                 Version: { type: TagType.Int, value: SchemExporter.SCHEMA_VERSION },
-                DataVersion: { type: TagType.Int, value: AppConstants.DATA_VERSION },
+                DataVersion: { type: TagType.Int, value: blockMesh.getAtlas().getDataVersion() },
                 Width: { type: TagType.Short, value: sizeVector.x },
                 Height: { type: TagType.Short, value: sizeVector.y },
                 Length: { type: TagType.Short, value: sizeVector.z },

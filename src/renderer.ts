@@ -1,6 +1,7 @@
 import * as twgl from 'twgl.js';
 
-import VANILLA_TEXTURE from '../res/atlases/vanilla.png';
+import TEXTURE_1_21_7 from '../res/atlases/1.21.7.png';
+import TEXTURE_26_3 from '../res/atlases/26.3.png';
 import { Bounds } from './bounds';
 import { ArcballCamera } from './camera';
 import { RGBA, RGBAUtil } from './colour';
@@ -17,6 +18,12 @@ import { UIUtil } from './util/ui_util';
 import { TAxis } from './util/type_util';
 
 /* eslint-disable */
+// The texture of each block atlas, by atlas version
+const ATLAS_TEXTURES: { [id: string]: string } = {
+    '26.3': TEXTURE_26_3,
+    '1.21.7': TEXTURE_1_21_7,
+};
+
 export enum MeshType {
     None,
     TriangleMesh,
@@ -702,7 +709,7 @@ export class Renderer {
 
         if (params.isFirstChunk) {
             this._atlasTexture = twgl.createTexture(this._gl, {
-                src: VANILLA_TEXTURE,
+                src: ATLAS_TEXTURES[params.atlasId] ?? TEXTURE_26_3,
                 mag: this._gl.NEAREST,
             }, () => {
                 this.forceRedraw();
