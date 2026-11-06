@@ -15,7 +15,7 @@ import { AppError, ASSERT } from './util/error_util';
 import { LOGF } from './util/log_util';
 import { SlabUtil } from './slab';
 import { Vector3 } from './vector';
-import { Voxel, VoxelMesh } from './voxel_mesh';
+import { TCellShape, Voxel, VoxelMesh } from './voxel_mesh';
 import { AssignParams } from './worker_types';
 
 interface Block {
@@ -270,12 +270,14 @@ export class BlockMesh {
         }
 
         // Swap per kind of shape, a block can have slabs but no stairs
-        for (const kind of ['stairs', 'slab'] as const) {
+        for (const kind of ['stairs', 'slab', 'button'] as const) {
             const wanted = blocks.filter((block) => needsSwap(block) && block.voxel.shape?.kind === kind);
             if (wanted.length === 0) {
                 continue;
             }
-            const probe = kind === 'slab' ? { kind, type: 'bottom' as const } : { kind, facing: 'north' as const, half: 'bottom' as const, shape: 'straight' as const };
+            const probe: TCellShape = kind === 'slab' ? { kind, type: 'bottom' } :
+                kind === 'button' ? { kind, face: 'floor', facing: 'north' } :
+                    { kind, facing: 'north', half: 'bottom', shape: 'straight' };
             const exclude = Array.from(allBlocks.blocks.keys()).filter((name) => SlabUtil.variantOf(probe, name) === undefined);
             if (exclude.length === allBlocks.blocks.size) {
                 continue; // Nothing in the palette has this shape, these export as full blocks

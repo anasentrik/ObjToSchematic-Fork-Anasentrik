@@ -224,6 +224,8 @@ export class AppContext {
                 action: 'Voxelise',
                 params: {
                     useStairs: components.useStairs.getValue(),
+                    useButtons: components.useButtons.getValue(),
+                    fillHoles: components.fillHoles.getValue(),
                     constraintAxis: components.constraintAxis.getValue(),
                     voxeliser: components.voxeliser.getValue(),
                     size: components.size.getValue(),

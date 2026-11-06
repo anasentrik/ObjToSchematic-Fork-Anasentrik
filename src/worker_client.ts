@@ -9,8 +9,10 @@ import { EAppEvent, EventManager } from './event';
 import { IExporter } from './exporters/base_exporter';
 import { ExporterFactory } from './exporters/exporters';
 import { ImporterFactor } from './importers/importers';
-import { Localiser } from './localiser';
+import { LOC, Localiser } from './localiser';
 import { Mesh } from './mesh';
+import { PointCloud } from './point_cloud';
+import { StatusHandler } from './status';
 import { ProgressManager, TTaskHandle } from './progress';
 import { ASSERT } from './util/error_util';
 import { VoxelMesh } from './voxel_mesh';
@@ -28,6 +30,7 @@ export class WorkerClient {
     }
 
     private _loadedMesh?: Mesh;
+    private _loadedPoints?: PointCloud;
     private _loadedVoxelMesh?: VoxelMesh;
     private _loadedBlockMesh?: BlockMesh;
 
@@ -84,6 +87,20 @@ export class WorkerClient {
     public async import(params: ImportParams.Input): Promise<ImportParams.Output> {
         const parsed = path.parse(params.file.name);
 
+        if (PointCloud.isPointCloudFile(params.file.name)) {
+            // Gaussian splats are points, not triangles, they skip the mesh entirely
+            this._loadedMesh = undefined;
+            this._loadedPoints = await PointCloud.load(params.file);
+            this._loadedPoints.process(params.upAxis, params.rotation.y, params.rotation.x, params.rotation.z);
+            StatusHandler.info(LOC('import.point_count', { count: this._loadedPoints.getCount() }));
+            return {
+                triangleCount: 0,
+                dimensions: this._loadedPoints.getBounds().getDimensions(),
+                materials: new Map(),
+            };
+        }
+        this._loadedPoints = undefined;
+
         const importer = ImporterFactor.GetImporter(parsed.ext === '.obj' ? 'obj' : 'gltf');
         this._loadedMesh = await importer.import(params.file);
 
@@ -100,6 +117,9 @@ export class WorkerClient {
     }
 
     public setMaterials(params: SetMaterialsParams.Input): SetMaterialsParams.Output {
+        if (this._loadedPoints !== undefined) {
+            return { materials: new Map(), materialsChanged: [] };
+        }
         ASSERT(this._loadedMesh !== undefined);
 
         this._loadedMesh.setMaterials(params.materials);
@@ -111,6 +131,9 @@ export class WorkerClient {
     }
 
     public renderMesh(params: RenderMeshParams.Input): RenderMeshParams.Output {
+        if (this._loadedPoints !== undefined) {
+            return { buffers: [], dimensions: this._loadedPoints.getBounds().getDimensions() };
+        }
         ASSERT(this._loadedMesh !== undefined);
 
         return {
@@ -121,15 +144,30 @@ export class WorkerClient {
 
 
     public voxelise(params: VoxeliseParams.Input): VoxeliseParams.Output {
-        ASSERT(this._loadedMesh !== undefined);
+        const points = this._loadedPoints;
+        let voxelise: (voxeliseParams: VoxeliseParams.Input) => VoxelMesh;
+        if (points !== undefined) {
+            voxelise = (voxeliseParams) => {
+                const voxelMesh = points.voxelise(voxeliseParams);
+                // Hole size is in blocks, the stairs pass voxelises at twice the size
+                PointCloud.fillHoles(voxelMesh, Math.round(params.fillHoles * voxeliseParams.size / params.size));
+                const dim = voxelMesh.getBounds().getDimensions().add(1);
+                StatusHandler.info(LOC('voxelise.voxel_count', { count: voxelMesh.getVoxelCount() }));
+                StatusHandler.info(LOC('voxelise.voxel_mesh_dimensions', { x: dim.x, y: dim.y, z: dim.z }));
+                return voxelMesh;
+            };
+        } else {
+            const mesh = this._loadedMesh;
+            ASSERT(mesh !== undefined);
+            const voxeliser: IVoxeliser = VoxeliserFactory.GetVoxeliser(params.voxeliser);
+            voxelise = (voxeliseParams) => voxeliser.voxelise(mesh, voxeliseParams);
+        }
 
-        const voxeliser: IVoxeliser = VoxeliserFactory.GetVoxeliser(params.voxeliser);
         if (params.useStairs) {
             // Voxelise at twice the size, every 2x2x2 group of voxels becomes a block, a stairs or a slab
-            const fineParams = { ...params, size: params.size * 2 };
-            this._loadedVoxelMesh = SlabUtil.fit(voxeliser.voxelise(this._loadedMesh, fineParams), params);
+            this._loadedVoxelMesh = SlabUtil.fit(voxelise({ ...params, size: params.size * 2 }), params);
         } else {
-            this._loadedVoxelMesh = voxeliser.voxelise(this._loadedMesh, params);
+            this._loadedVoxelMesh = voxelise(params);
         }
         this._loadedVoxelMesh.calculateNeighbours();
 

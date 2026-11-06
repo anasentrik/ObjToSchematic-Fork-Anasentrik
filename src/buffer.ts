@@ -9,7 +9,7 @@ import { AttributeData } from './render_buffer';
 import { AppUtil } from './util';
 import { ASSERT } from './util/error_util';
 import { Vector3 } from './vector';
-import { VoxelMesh } from './voxel_mesh';
+import { TCellShape, VoxelMesh } from './voxel_mesh';
 import { RenderNextVoxelMeshChunkParams } from './worker_types';
 
 export type TMeshBuffer = {
@@ -60,6 +60,33 @@ export type TBlockMeshBufferDescription = {
 type TMaterialID = string;
 
 export class ChunkedBufferGenerator {
+    /**
+     * The box a shape fills inside its cell as [minX, minY, minZ, maxX, maxY, maxZ], the cell is -0.5 to 0.5.
+     */
+    public static _shapeBox(shape: TCellShape): number[] | undefined {
+        const px = 1 / 16;
+        switch (shape.kind) {
+            case 'slab':
+                return shape.type === 'bottom' ? [-0.5, -0.5, -0.5, 0.5, 0, 0.5] : [-0.5, 0, -0.5, 0.5, 0.5, 0.5];
+            case 'button': {
+                if (shape.face === 'floor') {
+                    return [-3 * px, -0.5, -2 * px, 3 * px, -0.5 + 2 * px, 2 * px];
+                }
+                if (shape.face === 'ceiling') {
+                    return [-3 * px, 0.5 - 2 * px, -2 * px, 3 * px, 0.5, 2 * px];
+                }
+                switch (shape.facing) {
+                    case 'east': return [-0.5, -2 * px, -3 * px, -0.5 + 2 * px, 2 * px, 3 * px];
+                    case 'west': return [0.5 - 2 * px, -2 * px, -3 * px, 0.5, 2 * px, 3 * px];
+                    case 'south': return [-3 * px, -2 * px, -0.5, 3 * px, 2 * px, -0.5 + 2 * px];
+                    case 'north': return [-3 * px, -2 * px, 0.5 - 2 * px, 3 * px, 2 * px, 0.5];
+                }
+                break;
+            }
+        }
+        return undefined;
+    }
+
     public static fromVoxelMesh(voxelMesh: VoxelMesh, params: RenderNextVoxelMeshChunkParams.Input, chunkIndex: number): TVoxelMeshBufferDescription & { moreVoxelsToBuffer: boolean, progress: number } {
         const numTotalVoxels = voxelMesh.getVoxelCount();
         const voxelsStartIndex = chunkIndex * AppConfig.Get.VOXEL_BUFFER_CHUNK_SIZE;
@@ -78,14 +105,10 @@ export class ChunkedBufferGenerator {
             const voxelPositionArray = voxel.position.toArray();
 
             for (let j = 0; j < AppConstants.VoxelMeshBufferComponentOffsets.POSITION; ++j) {
-                let value = cube.custom.position[j] + voxelPositionArray[j % 3];
-                // Slabs only fill the lower or upper half of their cell
-                if (j % 3 === 1 && voxel.shape?.kind === 'slab') {
-                    const offset = cube.custom.position[j];
-                    if ((voxel.shape.type === 'bottom' && offset > 0) || (voxel.shape.type === 'top' && offset < 0)) {
-                        value = voxelPositionArray[1];
-                    }
-                }
+                // Slabs and buttons are drawn as a smaller box inside their cell, stairs as a full cube
+                const box = voxel.shape !== undefined ? ChunkedBufferGenerator._shapeBox(voxel.shape) : undefined;
+                const offset = cube.custom.position[j];
+                const value = voxelPositionArray[j % 3] + (box === undefined ? offset : (offset < 0 ? box[j % 3] : box[3 + j % 3]));
                 newBuffer.position.data[i * AppConstants.VoxelMeshBufferComponentOffsets.POSITION + j] = value;
             }
         }

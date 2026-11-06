@@ -1,5 +1,5 @@
 /**
- * Full block -> slab / stairs block, generated from the Minecraft 26.3 models.
+ * Full block -> slab / stairs / button block, generated from the Minecraft 26.3 models.
  * Only blocks listed here can be placed as that shape.
  */
 export const SLAB_OF: { [block: string]: string } = {
@@ -195,4 +195,22 @@ export const STAIRS_OF: { [block: string]: string } = {
     'minecraft:white_wool': 'minecraft:white_wool_stairs',
     'minecraft:yellow_concrete': 'minecraft:yellow_concrete_stairs',
     'minecraft:yellow_wool': 'minecraft:yellow_wool_stairs',
+};
+
+export const BUTTON_OF: { [block: string]: string } = {
+    'minecraft:acacia_planks': 'minecraft:acacia_button',
+    'minecraft:bamboo_planks': 'minecraft:bamboo_button',
+    'minecraft:birch_planks': 'minecraft:birch_button',
+    'minecraft:cherry_planks': 'minecraft:cherry_button',
+    'minecraft:crimson_planks': 'minecraft:crimson_button',
+    'minecraft:dark_oak_planks': 'minecraft:dark_oak_button',
+    'minecraft:jungle_planks': 'minecraft:jungle_button',
+    'minecraft:mangrove_planks': 'minecraft:mangrove_button',
+    'minecraft:oak_planks': 'minecraft:oak_button',
+    'minecraft:pale_oak_planks': 'minecraft:pale_oak_button',
+    'minecraft:polished_blackstone': 'minecraft:polished_blackstone_button',
+    'minecraft:poplar_planks': 'minecraft:poplar_button',
+    'minecraft:spruce_planks': 'minecraft:spruce_button',
+    'minecraft:stone': 'minecraft:stone_button',
+    'minecraft:warped_planks': 'minecraft:warped_button',
 };

@@ -70,6 +70,8 @@ export namespace SetMaterialsParams {
 export namespace VoxeliseParams {
     export type Input = {
         useStairs: boolean,
+        useButtons: boolean,
+        fillHoles: number,
         constraintAxis: TAxis,
         voxeliser: TVoxelisers,
         size: number,

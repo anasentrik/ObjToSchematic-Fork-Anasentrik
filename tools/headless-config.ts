@@ -19,6 +19,8 @@ export const headlessConfig: THeadlessConfig = {
         enableAmbientOcclusion: false, // Only want true if exporting to .obj
         normalBias: 0.0,
         useStairs: false,
+        useButtons: false,
+        fillHoles: 0,
     },
     assign: {
         textureAtlas: '26.3', // Must be an atlas name that exists in /resources/atlases

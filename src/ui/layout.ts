@@ -206,6 +206,18 @@ export class UI {
                     .setUncheckedText('assign.components.off')
                     .setDefaultValue(false)
                     .setLabel('voxelise.components.use_stairs'),
+                'useButtons': new CheckboxComponent()
+                    .setCheckedText('voxelise.components.on_details')
+                    .setUncheckedText('assign.components.off')
+                    .setDefaultValue(false)
+                    .setLabel('voxelise.components.use_buttons'),
+                'fillHoles': new SliderComponent()
+                    .setMin(0)
+                    .setMax(3)
+                    .setDefaultValue(1)
+                    .setDecimals(0)
+                    .setStep(1)
+                    .setLabel('voxelise.components.fill_holes'),
                 'ambientOcclusion': new CheckboxComponent()
                     .setCheckedText('voxelise.components.on_recommended')
                     .setUncheckedText('voxelise.components.off_faster')
@@ -247,6 +259,8 @@ export class UI {
                 'placeholder',
                 'voxeliser',
                 'useStairs',
+                'useButtons',
+                'fillHoles',
                 'ambientOcclusion',
                 'multisampleColouring',
                 'preserveDetail',

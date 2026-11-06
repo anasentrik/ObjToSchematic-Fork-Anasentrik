@@ -27,7 +27,8 @@ Other formats (`.litematic`, `.nbt`, `.schematic`, the JSON exporters) are not t
 ## Stairs and slabs (`.schem` only, off by default)
 
 - Option "Stairs and slabs": the model is voxelised at twice the size, then every 2x2x2 group of voxels becomes the best fitting block, slab or stairs (4 facings x 2 halves x 5 shapes).
-- Blocks without a slab or stairs variant are swapped for the closest colour that has one.
+- Option "Buttons for small details" (needs stairs, off by default): a lone dot of a clearly different colour on an even surface, like an eye painted on a face, or a tiny bump sticking out of a block, becomes a button on that face. Buttons come in wood, stone and polished blackstone only, so the colour is the closest of those.
+- Blocks without a slab, stairs or button variant are swapped for the closest colour that has one.
 - Written to `.schem` with their block state, for example `minecraft:oak_stairs[facing=north,half=bottom,shape=straight,waterlogged=false]`.
 - The viewer draws slabs at half height and stairs as full cubes.
 - `tools/make-test-schem.js` writes `tools/test-slabs-stairs.schem` with every stairs and slab state, for checking a paste tool.
@@ -46,7 +47,9 @@ Other formats (`.litematic`, `.nbt`, `.schematic`, the JSON exporters) are not t
 
 - **Up axis** option: -Z up (default), Y up or Z up, to stand a model upright.
 - Picking or dropping a file imports, voxelises and assigns blocks straight away, no extra clicks.
-- Drag and drop of `.obj` and `.glb` files anywhere on the page.
+- Drag and drop of `.obj`, `.glb`, `.ply` and `.splat` files anywhere on the page.
+- **Gaussian splats**: `.splat` files and Gaussian Splatting `.ply` files (for example from TripoSplat and other image-to-3D tools). Every splat becomes a voxel with its colour, nearly transparent splats (haze) are skipped. Plain point cloud `.ply` files with red/green/blue work too, `.ply` meshes with faces do not.
+- **Fill holes** slider for splats (0 to 3, default 1): gaps in the surface up to about twice that many blocks wide are closed with blocks in the colour around them, without making the surface thicker.
 
 ## Viewport
 

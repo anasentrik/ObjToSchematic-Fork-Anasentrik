@@ -11,7 +11,8 @@ import { RenderNextVoxelMeshChunkParams, VoxeliseParams } from './worker_types';
 
 export type TCellShape =
     | { kind: 'slab', type: 'bottom' | 'top' }
-    | { kind: 'stairs', facing: 'north' | 'east' | 'south' | 'west', half: 'bottom' | 'top', shape: 'straight' | 'inner_left' | 'inner_right' | 'outer_left' | 'outer_right' };
+    | { kind: 'stairs', facing: 'north' | 'east' | 'south' | 'west', half: 'bottom' | 'top', shape: 'straight' | 'inner_left' | 'inner_right' | 'outer_left' | 'outer_right' }
+    | { kind: 'button', face: 'floor' | 'wall' | 'ceiling', facing: 'north' | 'east' | 'south' | 'west' };
 
 export interface Voxel {
     position: Vector3,
